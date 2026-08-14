@@ -1,0 +1,139 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>{{.AppName}} - Gorun Project</title>
+    <link rel="stylesheet" href="/static/css/style.css">
+    <script src="/static/js/htmx.min.js"></script>
+</head>
+<body class="bg-dark">
+    <div id="toast-container" class="toast-container"></div>
+
+    <header class="navbar">
+        <div class="container nav-content">
+            <a href="/" class="brand">
+                <span class="brand-accent">&larr; Back to</span> Dashboard
+            </a>
+            <span class="badge badge-subtle">App: {{.AppName}}</span>
+        </div>
+    </header>
+
+    <main class="container main-content">
+        <div class="project-header">
+            <div>
+                <h1>{{.AppName}}</h1>
+                <p class="subtitle">Directory: <code>{{.Config.Path}}</code> &bull; Branch: <code>{{.Config.Branch}}</code></p>
+            </div>
+            <div>
+                <button 
+                    class="btn btn-primary btn-lg"
+                    hx-post="/app/{{.AppName}}/deploy"
+                    hx-target="#deployment-status"
+                    hx-swap="outerHTML">
+                    Deploy Now
+                </button>
+            </div>
+        </div>
+
+        <div class="grid-2col">
+            <section class="status-section">
+                <h2>Live Deployment & Logs</h2>
+                <div id="deployment-status" 
+                     {{if or .IsDeploying (and .LatestDeployment (eq .LatestDeployment.Status "Deploying"))}}
+                     hx-get="/app/{{.AppName}}/status" 
+                     hx-trigger="every 2s" 
+                     hx-swap="outerHTML"
+                     {{end}}>
+                    
+                    <div class="card status-card">
+                        <div class="status-header">
+                            <div>
+                                <span class="status-label">Status:</span>
+                                <span class="badge {{statusClass (if .LatestDeployment)}}{{.LatestDeployment.Status}}{{else}}idle{{end}}">
+                                    {{if .IsDeploying}}
+                                        Deploying...
+                                    {{else if .LatestDeployment}}
+                                        {{.LatestDeployment.Status}}
+                                    {{else}}
+                                        Never Deployed
+                                    {{end}}
+                                </span>
+                            </div>
+                            <div class="text-muted">
+                                {{if .LatestDeployment}}
+                                    Triggered via {{.LatestDeployment.TriggerSource}} at {{formatTime .LatestDeployment.CreatedAt}}
+                                {{end}}
+                            </div>
+                        </div>
+
+                        <div class="terminal-container">
+                            <div class="terminal-bar">
+                                <span class="dot dot-red"></span>
+                                <span class="dot dot-yellow"></span>
+                                <span class="dot dot-green"></span>
+                                <span class="terminal-title">Build & Execution Console</span>
+                            </div>
+                            <pre class="terminal-body" id="log-console"><code>{{if .LatestDeployment}}{{.LatestDeployment.Logs}}{{else}}No deployment logs recorded yet. Click "Deploy Now" to trigger.{{end}}</code></pre>
+                        </div>
+                    </div>
+                </div>
+            </section>
+
+            <aside class="sidebar-section">
+                <div class="card info-card">
+                    <h3>Webhook Configuration</h3>
+                    <p class="meta-item">Send GitHub push events to:</p>
+                    <div class="code-copy-box">
+                        <code>http://{{.Host}}/webhook/{{.AppName}}</code>
+                    </div>
+                    <p class="text-muted text-sm mt-2">
+                        Secret Key configured in <code>config.yaml</code>
+                    </p>
+                </div>
+
+                <div class="card history-card mt-4">
+                    <h3>Recent Deployments</h3>
+                    <div class="history-list">
+                        {{range .History}}
+                        <div class="history-item">
+                            <span class="badge badge-sm {{statusClass .Status}}">{{.Status}}</span>
+                            <div class="history-meta">
+                                <span class="history-time">{{formatTime .CreatedAt}}</span>
+                                <span class="history-source text-muted">via {{.TriggerSource}}</span>
+                            </div>
+                        </div>
+                        {{else}}
+                        <p class="text-muted">No deployment history yet.</p>
+                        {{end}}
+                    </div>
+                </div>
+            </aside>
+        </div>
+    </main>
+
+    <script>
+        document.body.addEventListener('showToast', function(evt) {
+            const data = evt.detail;
+            const container = document.getElementById('toast-container');
+            if (!container) return;
+
+            const toast = document.createElement('div');
+            toast.className = 'toast toast-' + (data.type || 'info');
+            toast.textContent = data.message;
+
+            container.appendChild(toast);
+            setTimeout(() => {
+                toast.classList.add('toast-fadeout');
+                setTimeout(() => toast.remove(), 400);
+            }, 3000);
+        });
+
+        // Auto scroll terminal log to bottom on reload
+        const consoleEl = document.getElementById('log-console');
+        if (consoleEl) {
+            consoleEl.scrollTop = consoleEl.scrollHeight;
+        }
+    </script>
+</body>
+</html>

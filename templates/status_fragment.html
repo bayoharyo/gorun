@@ -1,0 +1,47 @@
+<div id="deployment-status" 
+     {{if or .IsDeploying (and .LatestDeployment (eq .LatestDeployment.Status "Deploying"))}}
+     hx-get="/app/{{.AppName}}/status" 
+     hx-trigger="every 2s" 
+     hx-swap="outerHTML"
+     {{end}}>
+    
+    <div class="card status-card">
+        <div class="status-header">
+            <div>
+                <span class="status-label">Status:</span>
+                <span class="badge {{statusClass (if .LatestDeployment)}}{{.LatestDeployment.Status}}{{else}}idle{{end}}">
+                    {{if .IsDeploying}}
+                        Deploying...
+                    {{else if .LatestDeployment}}
+                        {{.LatestDeployment.Status}}
+                    {{else}}
+                        Never Deployed
+                    {{end}}
+                </span>
+            </div>
+            <div class="text-muted">
+                {{if .LatestDeployment}}
+                    Triggered via {{.LatestDeployment.TriggerSource}} at {{formatTime .LatestDeployment.CreatedAt}}
+                {{end}}
+            </div>
+        </div>
+
+        <div class="terminal-container">
+            <div class="terminal-bar">
+                <span class="dot dot-red"></span>
+                <span class="dot dot-yellow"></span>
+                <span class="dot dot-green"></span>
+                <span class="terminal-title">Build & Execution Console</span>
+            </div>
+            <pre class="terminal-body" id="log-console"><code>{{if .LatestDeployment}}{{.LatestDeployment.Logs}}{{else}}No logs recorded.{{end}}</code></pre>
+        </div>
+    </div>
+
+    <script>
+        // Auto scroll terminal log to bottom on reload
+        (function() {
+            var el = document.getElementById('log-console');
+            if (el) el.scrollTop = el.scrollHeight;
+        })();
+    </script>
+</div>

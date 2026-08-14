@@ -1,0 +1,86 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Gorun - Go Application Deployment Dashboard</title>
+    <link rel="stylesheet" href="/static/css/style.css">
+    <script src="/static/js/htmx.min.js"></script>
+</head>
+<body class="bg-dark">
+    <div id="toast-container" class="toast-container"></div>
+    
+    <header class="navbar">
+        <div class="container nav-content">
+            <a href="/" class="brand">
+                <span class="brand-accent">Go</span>run
+            </a>
+            <span class="badge badge-subtle">Single Node Deployer</span>
+        </div>
+    </header>
+
+    <main class="container main-content">
+        <div class="header-section">
+            <h1>Configured Applications</h1>
+            <p class="subtitle">Deploy and manage your Go applications effortlessly</p>
+        </div>
+
+        <div class="apps-grid">
+            {{range .Apps}}
+            <div class="card app-card">
+                <div class="card-header">
+                    <h2 class="app-title">{{.Name}}</h2>
+                    <span class="badge {{statusClass (if .LatestDeployment)}}{{.LatestDeployment.Status}}{{else}}idle{{end}}">
+                        {{if .IsDeploying}}
+                            Deploying...
+                        {{else if .LatestDeployment}}
+                            {{.LatestDeployment.Status}}
+                        {{else}}
+                            Idle
+                        {{end}}
+                    </span>
+                </div>
+                <div class="card-body">
+                    <p class="meta-item"><strong>Path:</strong> <code>{{.Config.Path}}</code></p>
+                    <p class="meta-item"><strong>Branch:</strong> <code>{{.Config.Branch}}</code></p>
+                    <p class="meta-item"><strong>Last Run:</strong> {{if .LatestDeployment}}{{formatTime .LatestDeployment.CreatedAt}}{{else}}Never{{end}}</p>
+                </div>
+                <div class="card-footer">
+                    <a href="/app/{{.Name}}" class="btn btn-secondary">View Details & Logs</a>
+                    <button 
+                        class="btn btn-primary"
+                        hx-post="/app/{{.Name}}/deploy"
+                        hx-target="#global-status-indicator"
+                        hx-swap="innerHTML">
+                        Deploy
+                    </button>
+                </div>
+            </div>
+            {{else}}
+            <div class="card empty-card">
+                <p>No applications configured yet. Check your <code>config.yaml</code>.</p>
+            </div>
+            {{end}}
+        </div>
+        <div id="global-status-indicator" style="display:none;"></div>
+    </main>
+
+    <script>
+        document.body.addEventListener('showToast', function(evt) {
+            const data = evt.detail;
+            const container = document.getElementById('toast-container');
+            if (!container) return;
+
+            const toast = document.createElement('div');
+            toast.className = 'toast toast-' + (data.type || 'info');
+            toast.textContent = data.message;
+
+            container.appendChild(toast);
+            setTimeout(() => {
+                toast.classList.add('toast-fadeout');
+                setTimeout(() => toast.remove(), 400);
+            }, 3000);
+        });
+    </script>
+</body>
+</html>
