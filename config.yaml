@@ -6,4 +6,4 @@ apps:
     path: "./"
     branch: "main"
     webhook_secret: "secret-key-12345"
-    deploy_cmd: "echo 'Starting build process...'; sleep 1; echo 'Compiling assets...'; sleep 1; echo 'Build successful!'"
+    deploy_cmd: "echo '==> Pulling dependencies...'; sleep 1; echo '==> Building binary...'; sleep 1; echo '==> Restarting services...'; sleep 1; echo '==> Deployment finished successfully!'"

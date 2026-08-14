@@ -46,6 +46,9 @@ func setupTestEnvironment(t *testing.T) (*Handler, *http.ServeMux, string) {
 	if err != nil {
 		t.Fatalf("failed to init store: %v", err)
 	}
+	t.Cleanup(func() {
+		_ = s.Close()
+	})
 
 	d := deployer.NewDeployer(s)
 	h, err := NewHandler(cfg, s, d, templatesDir)

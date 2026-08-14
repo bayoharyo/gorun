@@ -1,78 +1,135 @@
-## Goal Description
-Dokumen ini merincikan rencana implementasi khusus untuk sisi frontend dari aplikasi **Gorun**. Frontend akan dibangun tanpa kerangka SPA (seperti React/Vue), melainkan menggunakan **HTML Server-Side Rendering (Go Templates)** yang diperkaya dengan **HTMX** untuk interaksi dinamis tanpa me-reload halaman, dan **Vanilla CSS** untuk desain visual yang modern, premium, dan responsif.
+# Frontend Implementation Plan - Gorun
 
-## Design Decisions
-1. **Pewarnaan Log**: Output log build/docker akan menggunakan format teks **monokrom** dalam kotak kode standar agar desain tetap simpel dan elegan untuk versi awal.
-2. **Notifikasi Global**: Kita akan menggunakan **Toast Notification** di sudut layar untuk menampilkan notifikasi global terkait status sistem (misalnya: "Deployment Started", "Deployment Successful").
+Dokumen ini merincikan spesifikasi teknis lengkap untuk sisi frontend aplikasi **Gorun**. Frontend dibangun menggunakan **HTML Server-Side Rendering (Go Templates)** yang diperkaya dengan **HTMX** untuk interaksi dinamis tanpa me-reload halaman, dan **Vanilla CSS** untuk tampilan modern, premium, dan responsif.
 
 ---
 
-## Proposed Changes
+## 1. Arsitektur & Data Contracts
 
-### 1. Struktur Layout & Templating
-Menggunakan library template bawaan Go `html/template`.
-- **`templates/layout.html`**:
-  Berisi struktur dasar dokumen HTML5, integrasi library eksternal (htmx), meta tag responsif, dan `<main>` tag tempat konten lain disuntikkan.
-- **`templates/dashboard.html`**:
-  Halaman depan yang berisi *Grid* list semua aplikasi yang telah dikonfigurasi di `config.yaml`.
-- **`templates/project.html`**:
-  Halaman detail satu aplikasi, menampilkan riwayat deployment sebelumnya dan layar terminal/konsol log secara real-time.
+Untuk memastikan sinkronisasi antara backend dan frontend tanpa ambiguitas, template frontend mengacu pada *data contracts* berikut:
 
----
+### Struct View Model Backend
+```go
+// Data yang dikirim ke templates/dashboard.html
+type DashboardData struct {
+    Apps []AppSummary
+}
 
-### 2. Styling (Vanilla CSS)
-Akan dibuat file `static/css/style.css` tanpa menggunakan TailwindCSS, sesuai panduan desain estetika web.
-- **Palet Warna**: Menggunakan HSL. Fokus pada *Dark Mode* premium.
-  - Background: Sangat gelap (misal: `#0a0a0a`).
-  - Container/Card: Abu-abu gelap dengan sedikit transparansi/border (misal: `#171717`, border `#262626`).
-  - Aksen Warna Utama (Tombol Deploy): Cyan/Biru modern atau warna brand Go (misal: `#00ADD8`).
-  - Teks: Abu-abu terang kontras (misal: `#EDEDED`, sekunder `#A3A3A3`).
-- **Tipografi**: Menggunakan sistem font *sans-serif* modern dan bersih seperti **Inter** atau system-ui, khusus untuk log terminal menggunakan font *monospace* seperti JetBrains Mono atau Fira Code.
-- **Animasi & Interaksi**: Menambahkan transisi halus pada *hover state* tombol dan *fade-in* saat memuat konten.
+type AppSummary struct {
+    Name             string
+    Config           config.AppConfig
+    LatestDeployment *store.Deployment // nil jika belum pernah deploy
+    IsDeploying      bool
+}
 
----
+// Data yang dikirim ke templates/project.html
+type ProjectData struct {
+    AppName          string
+    Config           config.AppConfig
+    LatestDeployment *store.Deployment
+    History          []*store.Deployment
+    IsDeploying      bool
+    Host             string // misal "localhost:8080"
+}
 
-### 3. Interaksi HTMX (The Magic)
-
-Alih-alih menggunakan JavaScript berat, HTMX akan menangani permintaan asinkronus dengan markup HTML sederhana:
-
-#### Toast Notification (Global)
-Komponen Toast Notification diatur di dalam `layout.html`. Backend dapat memicu munculnya toast (contoh: "Deploying...") dengan memanfaatkan kapabilitas event HTMX (seperti mengirim response header `HX-Trigger`) setelah tombol deploy diklik.
-
-#### Trigger Deployment (Tombol Deploy)
-Di dalam `templates/project.html`:
-```html
-<button 
-    hx-post="/app/{{.AppName}}/deploy" 
-    hx-target="#deployment-status" 
-    hx-swap="innerHTML"
-    class="btn-primary">
-    Deploy Now
-    <span class="htmx-indicator loader"></span> <!-- Muncul saat loading -->
-</button>
+// Data yang dikirim ke templates/status_fragment.html (HTMX polling)
+type StatusFragmentData struct {
+    AppName          string
+    LatestDeployment *store.Deployment
+    IsDeploying      bool
+}
 ```
 
-#### Live Status Polling (Melihat Log Realtime)
-Ketika deployment sedang berjalan, kita perlu melihat output terminal. HTMX akan melakukan *polling* otomatis hanya ketika statusnya adalah "Deploying".
+### Template Helper Functions (`template.FuncMap`)
+- `formatTime(t time.Time) string`: Format tanggal human-readable (`2006-01-02 15:04:05`) atau `"Never"` jika zero time.
+- `formatDuration(start, end time.Time) string`: Menghitung durasi proses deployment.
+- `statusClass(status store.Status) string`: Mengembalikan nama class CSS: `status-success`, `status-failed`, `status-deploying`, `status-idle`.
 
-```html
-<!-- Fragmen ini akan di-replace oleh respon backend secara berkala -->
-<div id="deployment-status" 
-     {{if eq .Status "Deploying"}} 
-     hx-get="/app/{{.AppName}}/status" 
-     hx-trigger="every 2s" 
-     hx-swap="outerHTML" 
-     {{end}}>
-     
-    <h3>Status: <span class="badge {{.Status}}">{{.Status}}</span></h3>
-    <pre class="terminal-log"><code>{{.Logs}}</code></pre>
-</div>
+---
+
+## 2. Struktur File Frontend
+
+```text
+static/
+├── css/
+│   └── style.css            # Vanilla CSS dengan Dark Slate Theme & Design Tokens
+└── js/
+    └── htmx.min.js          # Library HTMX v1.9.10+
+templates/
+├── dashboard.html           # Full page: Grid daftar aplikasi yang terkonfigurasi
+├── project.html             # Full page: Detail proyek, webhook info, history & live console
+└── status_fragment.html     # Fragment HTML: Status badge & console log untuk HTMX polling
 ```
-*Catatan*: Jika statusnya telah menjadi `Success` atau `Failed`, backend tidak akan lagi mengirim atribut `hx-trigger="every 2s"`, sehingga siklus *polling* akan berhenti otomatis dan menghemat resource (Server & Klien).
 
-## Verification Plan
-- **Automated Tests**: Tidak memerlukan pengujian otomatis khusus frontend untuk versi awal ini (karena logic dirender dari server).
-- **Manual Verification**: 
-  - Membuka halaman pada ukuran layar *desktop* dan *mobile* untuk memastikan responsivitas.
-  - Menekan tombol **Deploy** dan memastikan indikator *loading* (spinner) muncul.
-  - Memastikan teks log terminal secara otomatis ditambahkan/diperbarui (*auto-scroll* ke bawah sangat disarankan via sedikit JS kustom jika panjang).
+---
+
+## 3. Matriks Interaksi HTMX & Event
+
+| Pemicu (Trigger) | Endpoint & Method | Jenis Request | Target DOM | Swap Type | Payload / Respons |
+|---|---|---|---|---|---|
+| Buka Dashboard | `GET /` | Full Page | `window` | Standard | Render `dashboard.html` |
+| Buka Detail Proyek | `GET /app/{name}` | Full Page | `window` | Standard | Render `project.html` |
+| Klik Tombol "Deploy" | `POST /app/{name}/deploy` | HTMX POST | `#deployment-status` | `outerHTML` | Render `status_fragment.html` + Header `HX-Trigger` |
+| Live Polling Status & Log | `GET /app/{name}/status` | HTMX GET (every 2s) | `#deployment-status` | `outerHTML` | Render `status_fragment.html` |
+
+### Toast Notification Protocol via `HX-Trigger`
+Backend menyertakan header HTTP saat merespons trigger deploy:
+```http
+HX-Trigger: {"showToast": {"message": "Deployment triggered for my-app", "type": "info"}}
+```
+
+Client script di dalam template menangkap custom event `showToast`:
+```javascript
+document.body.addEventListener('showToast', function(evt) {
+    const data = evt.detail;
+    const container = document.getElementById('toast-container');
+    if (!container) return;
+
+    const toast = document.createElement('div');
+    toast.className = 'toast toast-' + (data.type || 'info');
+    toast.textContent = data.message;
+    container.appendChild(toast);
+
+    setTimeout(() => {
+        toast.classList.add('toast-fadeout');
+        setTimeout(() => toast.remove(), 400);
+    }, 3000);
+});
+```
+
+---
+
+## 4. Desain Sistem (Vanilla CSS)
+
+File `static/css/style.css` menggunakan CSS Variables:
+- **Background Utama**: `--bg-primary: #0a0e17;`, `--bg-secondary: #121824;`, `--bg-surface: #1a2234;`
+- **Warna Aksen**: Go Blue `--accent-blue: #00add8;` dengan hover `--accent-blue-hover: #0090b5;`
+- **Status Colors**:
+  - `Success`: Green (`#34d399`, bg `rgba(16, 185, 129, 0.15)`)
+  - `Failed`: Red (`#f87171`, bg `rgba(239, 68, 68, 0.15)`)
+  - `Deploying`: Yellow/Amber (`#fbbf24`, bg `rgba(245, 158, 11, 0.15)`, dengan animasi `pulse`)
+  - `Idle`: Slate (`#94a3b8`, bg `rgba(148, 163, 184, 0.15)`)
+- **Komponen Terminal**: Styling konsol Unix hitam pekat (`#0d1117`) dengan window control dots (merah, kuning, hijau) dan auto-scroll log.
+
+---
+
+## 5. Verification Plan
+
+### Automated Verification
+- Pastikan build Go dan asset handler melayani static file tanpa error:
+  - `curl -I http://localhost:8080/static/css/style.css` (200 OK)
+  - `curl -I http://localhost:8080/static/js/htmx.min.js` (200 OK)
+
+### Manual Verification
+1. **Dashboard UI**:
+   - Buka `http://localhost:8080/` -> Memastikan kartu proyek tampil rapi dalam layout CSS grid.
+   - Memastikan badge status awal tampil ("Idle" atau status deploy terakhir).
+2. **Deploy Trigger & Polling**:
+   - Buka `http://localhost:8080/app/{name}`.
+   - Klik tombol **Deploy Now**.
+   - Verifikasi Toast notifikasi muncul di pojok kanan bawah.
+   - Verifikasi badge berubah menjadi `Deploying...` (berkedip/pulse) dan konsol log melakukan polling setiap 2 detik.
+   - Pastikan teks log di terminal otomatis scroll ke baris paling bawah.
+   - Setelah deploy selesai, pastikan atribut `hx-trigger="every 2s"` hilang sehingga polling berhenti.
+3. **Responsivitas**:
+   - Uji tampilan pada viewport mobile (375px) dan desktop (1200px).

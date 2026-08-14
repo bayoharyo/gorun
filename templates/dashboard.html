@@ -30,7 +30,7 @@
             <div class="card app-card">
                 <div class="card-header">
                     <h2 class="app-title">{{.Name}}</h2>
-                    <span class="badge {{statusClass (if .LatestDeployment)}}{{.LatestDeployment.Status}}{{else}}idle{{end}}">
+                    <span class="badge {{if .LatestDeployment}}{{statusClass .LatestDeployment.Status}}{{else}}status-idle{{end}}">
                         {{if .IsDeploying}}
                             Deploying...
                         {{else if .LatestDeployment}}

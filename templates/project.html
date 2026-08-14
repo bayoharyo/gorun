@@ -50,7 +50,7 @@
                         <div class="status-header">
                             <div>
                                 <span class="status-label">Status:</span>
-                                <span class="badge {{statusClass (if .LatestDeployment)}}{{.LatestDeployment.Status}}{{else}}idle{{end}}">
+                                <span class="badge {{if .LatestDeployment}}{{statusClass .LatestDeployment.Status}}{{else}}status-idle{{end}}">
                                     {{if .IsDeploying}}
                                         Deploying...
                                     {{else if .LatestDeployment}}

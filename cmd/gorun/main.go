@@ -52,7 +52,7 @@ func main() {
 	// Static assets handler
 	if _, err := os.Stat(*staticDir); err == nil {
 		fs := http.FileServer(http.Dir(*staticDir))
-		mux.Handle("/static/", http.StripPrefix("/static/", fs))
+		mux.Handle("GET /static/", http.StripPrefix("/static/", fs))
 	} else {
 		log.Printf("[WARN] Static directory %q not found, static assets will not be served", *staticDir)
 	}
