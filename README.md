@@ -1,24 +1,24 @@
 # Gorun 🚀
 
-**Gorun** adalah aplikasi web *single-node deployment manager* yang ringan untuk mempermudah proses deployment aplikasi (khususnya berbasis Docker / Go) langsung di server / VPS Anda. 
+**Gorun** is a lightweight, single-node deployment manager web application designed to simplify the deployment process for your applications (especially Docker / Go based) directly on your server / VPS.
 
-Gorun berjalan di server yang sama dengan aplikasi target, memantau/mengambil *source code* terbaru dari Git, mengeksekusi proses build/containerization, dan menyajikan log deployment secara *real-time* melalui antarmuka web modern berbasis **Go Templates + HTMX**.
-
----
-
-## ✨ Fitur Utama
-
-- **Project Management via Web UI**: Tambah, edit, ganti nama (rename), dan hapus konfigurasi proyek langsung dari browser tanpa perlu mengedit file YAML secara manual.
-- **Proteksi Basic Authentication**: Mengamankan seluruh halaman dashboard dan manajemen proyek dengan kredensial username & password yang dapat dikonfigurasi.
-- **Interaktivitas Cepat Tanpa SPA**: Menggunakan Server-Side Rendering (SSR) Go Templates + **HTMX** untuk polling status dan streaming log secara asinkron tanpa reload halaman.
-- **Dukungan GitHub Webhooks**: Deployment otomatis yang aman saat ada event `git push`, divalidasi menggunakan HMAC-SHA256 signature (`X-Hub-Signature-256`) tanpa terhalang Basic Auth.
-- **Concurrency Control**: Mencegah *race condition* dengan memastikan hanya ada **1 proses deployment aktif** per aplikasi dalam satu waktu.
-- **Embedded / Pure-Go Database**: Menggunakan SQLite murni (`modernc.org/sqlite`) tanpa ketergantungan CGO, dengan dukungan relasi Foreign Key dan Cascade Delete.
-- **Terminal Log Real-time**: Menampilkan output build (`stdout` & `stderr`) secara berkala di browser.
+Gorun runs on the same server as the target applications, monitors/pulls the latest source code from Git, executes build/containerization commands, and serves real-time deployment logs through a modern web UI powered by **Go Templates + HTMX**.
 
 ---
 
-## 🏗️ Arsitektur & Alur Kerja
+## Key Features
+
+- **Project Management via Web UI**: Add, edit, rename, and delete project configurations directly from your browser without manually modifying YAML files.
+- **Basic Authentication Protection**: Secure all dashboard and project management pages with configurable username and password credentials.
+- **Fast Interactivity Without SPA**: Uses Server-Side Rendering (SSR) with Go Templates + **HTMX** for asynchronous status polling and log streaming without full page reloads.
+- **GitHub Webhooks Support**: Secure automatic deployments triggered by `git push` events, validated using HMAC-SHA256 signatures (`X-Hub-Signature-256`) while bypassing Basic Auth restrictions.
+- **Concurrency Control**: Prevents race conditions by ensuring only **1 active deployment process** runs per application at any given time.
+- **Embedded / Pure-Go Database**: Uses pure SQLite (`modernc.org/sqlite`) without CGO dependencies, featuring foreign key constraints and cascade deletion support.
+- **Real-time Terminal Logs**: Streams build output (`stdout` & `stderr`) periodically in the browser.
+
+---
+
+## Architecture & Workflow
 
 ```
 GitHub Push / UI Trigger 
@@ -27,29 +27,29 @@ GitHub Push / UI Trigger
 ┌──────────────────┐
 │   Gorun Server   │
 └────────┬─────────┘
-         │ (Asinkron / Non-blocking)
+         │ (Asynchronous / Non-blocking)
          ▼
  1. Concurrency Check (Lock)
- 2. Update status -> "Deploying" di SQLite
+ 2. Update status -> "Deploying" in SQLite
  3. Git Pull (git pull origin <branch>)
  4. Execute Deploy Command (docker compose up -d --build)
- 5. Stream output -> Update log di SQLite
+ 5. Stream output -> Update log in SQLite
  6. Update status -> "Success" / "Failed" (Release Lock)
 ```
 
 ---
 
-## 📋 Prasyarat
+## Prerequisites
 
-- **Go** (versi 1.22 atau lebih baru) untuk menjalankan atau mengompilasi Gorun.
-- **Git** terinstall pada server/komputer.
-- **Docker & Docker Compose** (jika target deployment menggunakan container).
+- **Go** (version 1.22 or newer) to run or build Gorun.
+- **Git** installed on the server/machine.
+- **Docker & Docker Compose** (if deployment targets use containers).
 
 ---
 
-## ⚙️ Konfigurasi (`config.yaml`)
+## Configuration (`config.yaml`)
 
-Konfigurasi server Gorun difokuskan pada port dan kredensial login Basic Auth:
+Gorun server configuration focuses on the listening port and Basic Auth login credentials:
 
 ```yaml
 # Gorun Server Configuration
@@ -60,84 +60,49 @@ password: "your-secure-password"
 
 ---
 
-## 🚀 Cara Menjalankan
+## How to Run
 
-### 1. Menjalankan Langsung (Development)
+### 1. Direct Execution (Development)
 ```bash
 go run cmd/gorun/main.go
 ```
 
 ### 2. Build Binary (Production)
 ```bash
-# Kompilasi binary
+# Compile binary
 go build -o gorun ./cmd/gorun
 
-# Jalankan binary
+# Run binary
 ./gorun --config=config.yaml
 ```
 
-Buka browser dan akses antarmuka Gorun di:
+Open your browser and navigate to:
 ```text
 http://localhost:8080
 ```
-*(Gunakan username dan password yang telah ditentukan di `config.yaml` saat browser meminta otentikasi).*
+*(Use the username and password configured in `config.yaml` when prompted for authentication).*
 
 ---
 
-## 🔗 Integrasi GitHub Webhook
+## GitHub Webhook Integration
 
-Untuk mengaktifkan deployment otomatis saat melakukan push ke GitHub:
+To enable automated deployments upon pushing to GitHub:
 
-1. Buat proyek terlebih dahulu melalui antarmuka web Gorun (**+ Add Project**).
-2. Tentukan **Webhook Secret Key** untuk proyek tersebut.
-3. Buka repositori GitHub Anda &rarr; **Settings** &rarr; **Webhooks** &rarr; **Add webhook**.
-4. **Payload URL**: `http://<IP-VPS-ANDA>:8080/webhook/<NAMA-PROJECT>` (contoh: `http://103.x.x.x:8080/webhook/my-app`).
+1. Create a project via the Gorun web interface (**+ Add Project**).
+2. Set a **Webhook Secret Key** for the project.
+3. Open your GitHub repository &rarr; **Settings** &rarr; **Webhooks** &rarr; **Add webhook**.
+4. **Payload URL**: `http://<YOUR-VPS-IP>:8080/webhook/<PROJECT-NAME>` (example: `http://103.x.x.x:8080/webhook/my-app`).
 5. **Content type**: `application/json`.
-6. **Secret**: Masukkan secret yang sama dengan konfigurasi webhook secret di Gorun.
-7. **Which events would you like to trigger this webhook?**: Pilih *Just the push event*.
-8. Klik **Add webhook**.
+6. **Secret**: Enter the same secret configured for the project in Gorun.
+7. **Which events would you like to trigger this webhook?**: Select *Just the push event*.
+8. Click **Add webhook**.
 
 ---
 
-## 🧪 Menjalankan Pengujian (Testing)
+## Running Tests
 
-Jalankan seluruh *unit test* suite:
+Run the entire unit test suite:
 
 ```bash
 go test -v ./...
 ```
-
----
-
-## 📁 Struktur Direktori
-
-```text
-.
-├── cmd/
-│   └── gorun/
-│       └── main.go          # Entrypoint server Gorun
-├── internal/
-│   ├── config/              # Modul pembaca config.yaml & kredensial auth
-│   ├── deployer/            # Engine eksekusi shell & concurrency lock
-│   ├── handler/             # HTTP controller, auth middleware, CRUD & router
-│   └── store/               # SQLite store untuk projects, deployments, & logs
-├── static/
-│   ├── css/
-│   │   └── style.css        # Vanilla CSS (Dark mode modern UI)
-│   └── js/
-│       └── htmx.min.js      # Library HTMX
-├── templates/
-│   ├── dashboard.html       # Halaman utama (daftar aplikasi & tombol Add)
-│   ├── project.html         # Halaman detail, logs, tombol Edit & Delete
-│   ├── project_form.html    # Form Create, Edit, dan Rename project
-│   └── status_fragment.html # Fragmen HTMX untuk auto-refresh polling
-├── config.example.yaml      # Contoh file konfigurasi
-├── go.mod
-└── README.md
-```
-
----
-
-## 📄 Lisensi
-
-Proyek ini dibuat untuk kebutuhan personal & open-source. Bebas digunakan dan dimodifikasi sesuai kebutuhan Anda.
