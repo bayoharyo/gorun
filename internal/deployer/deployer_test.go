@@ -5,7 +5,6 @@ import (
 	"testing"
 	"time"
 
-	"gorun/internal/config"
 	"gorun/internal/store"
 )
 
@@ -21,13 +20,17 @@ func TestDeployerConcurrency(t *testing.T) {
 
 	d := NewDeployer(s)
 
-	app := config.AppConfig{
+	proj := &store.Project{
+		Name:      "myapp",
 		Path:      tmpDir,
 		DeployCmd: "echo 'building'; sleep 0.2; echo 'done'",
 	}
+	if err := s.CreateProject(proj); err != nil {
+		t.Fatalf("failed to create project: %v", err)
+	}
 
 	// First trigger
-	deployID1, err := d.TriggerDeploy("myapp", app, "manual")
+	deployID1, err := d.TriggerDeploy(proj, "manual")
 	if err != nil {
 		t.Fatalf("unexpected error on first deploy: %v", err)
 	}
@@ -36,7 +39,7 @@ func TestDeployerConcurrency(t *testing.T) {
 	}
 
 	// Immediate second trigger should return ErrDeployInProgress
-	_, err = d.TriggerDeploy("myapp", app, "manual")
+	_, err = d.TriggerDeploy(proj, "manual")
 	if err != ErrDeployInProgress {
 		t.Fatalf("expected ErrDeployInProgress, got %v", err)
 	}
@@ -44,12 +47,12 @@ func TestDeployerConcurrency(t *testing.T) {
 	// Wait for background process to finish
 	time.Sleep(500 * time.Millisecond)
 
-	if d.IsDeploying("myapp") {
+	if d.IsDeploying(proj.ID) {
 		t.Errorf("expected deployer lock to be released")
 	}
 
 	// Check status in DB
-	dep, err := s.GetLatestDeployment("myapp")
+	dep, err := s.GetLatestDeployment(proj.ID)
 	if err != nil {
 		t.Fatalf("failed to get deployment: %v", err)
 	}

@@ -8,11 +8,12 @@ Gorun berjalan di server yang sama dengan aplikasi target, memantau/mengambil *s
 
 ## ✨ Fitur Utama
 
-- **Konfigurasi Statis via YAML**: Definisi aplikasi dan perintah deploy dikelola secara terpusat melalui file `config.yaml`.
+- **Project Management via Web UI**: Tambah, edit, ganti nama (rename), dan hapus konfigurasi proyek langsung dari browser tanpa perlu mengedit file YAML secara manual.
+- **Proteksi Basic Authentication**: Mengamankan seluruh halaman dashboard dan manajemen proyek dengan kredensial username & password yang dapat dikonfigurasi.
 - **Interaktivitas Cepat Tanpa SPA**: Menggunakan Server-Side Rendering (SSR) Go Templates + **HTMX** untuk polling status dan streaming log secara asinkron tanpa reload halaman.
-- **Dukungan GitHub Webhooks**: Deployment otomatis yang aman saat ada event `git push`, divalidasi menggunakan HMAC-SHA256 signature (`X-Hub-Signature-256`).
+- **Dukungan GitHub Webhooks**: Deployment otomatis yang aman saat ada event `git push`, divalidasi menggunakan HMAC-SHA256 signature (`X-Hub-Signature-256`) tanpa terhalang Basic Auth.
 - **Concurrency Control**: Mencegah *race condition* dengan memastikan hanya ada **1 proses deployment aktif** per aplikasi dalam satu waktu.
-- **Embedded / Pure-Go Database**: Menggunakan SQLite murni (`modernc.org/sqlite`) tanpa ketergantungan CGO, sehingga mudah di-*compile* dan dipindahkan ke berbagai lingkungan.
+- **Embedded / Pure-Go Database**: Menggunakan SQLite murni (`modernc.org/sqlite`) tanpa ketergantungan CGO, dengan dukungan relasi Foreign Key dan Cascade Delete.
 - **Terminal Log Real-time**: Menampilkan output build (`stdout` & `stderr`) secara berkala di browser.
 
 ---
@@ -48,17 +49,13 @@ GitHub Push / UI Trigger
 
 ## ⚙️ Konfigurasi (`config.yaml`)
 
-Buat file `config.yaml` di root direktori aplikasi (atau salin dari `config.example.yaml`):
+Konfigurasi server Gorun difokuskan pada port dan kredensial login Basic Auth:
 
 ```yaml
+# Gorun Server Configuration
 port: 8080
-
-apps:
-  demo-app:
-    path: "/var/www/demo-app"               # Path direktori proyek di server
-    branch: "main"                         # Branch git yang di-pull (default: main)
-    webhook_secret: "super-secret-key-123" # Secret untuk validasi GitHub webhook
-    deploy_cmd: "docker compose up -d --build" # Perintah build & run (default)
+username: "admin"
+password: "your-secure-password"
 ```
 
 ---
@@ -76,13 +73,14 @@ go run cmd/gorun/main.go
 go build -o gorun ./cmd/gorun
 
 # Jalankan binary
-./gorun --config=config.yaml --port=8080
+./gorun --config=config.yaml
 ```
 
 Buka browser dan akses antarmuka Gorun di:
 ```text
 http://localhost:8080
 ```
+*(Gunakan username dan password yang telah ditentukan di `config.yaml` saat browser meminta otentikasi).*
 
 ---
 
@@ -90,12 +88,14 @@ http://localhost:8080
 
 Untuk mengaktifkan deployment otomatis saat melakukan push ke GitHub:
 
-1. Buka repositori GitHub Anda &rarr; **Settings** &rarr; **Webhooks** &rarr; **Add webhook**.
-2. **Payload URL**: `http://<IP-VPS-ANDA>:8080/webhook/<NAMA-APP>` (contoh: `http://103.x.x.x:8080/webhook/demo-app`).
-3. **Content type**: `application/json`.
-4. **Secret**: Masukkan secret yang sama dengan `webhook_secret` di `config.yaml`.
-5. **Which events would you like to trigger this webhook?**: Pilih *Just the push event*.
-6. Klik **Add webhook**.
+1. Buat proyek terlebih dahulu melalui antarmuka web Gorun (**+ Add Project**).
+2. Tentukan **Webhook Secret Key** untuk proyek tersebut.
+3. Buka repositori GitHub Anda &rarr; **Settings** &rarr; **Webhooks** &rarr; **Add webhook**.
+4. **Payload URL**: `http://<IP-VPS-ANDA>:8080/webhook/<NAMA-PROJECT>` (contoh: `http://103.x.x.x:8080/webhook/my-app`).
+5. **Content type**: `application/json`.
+6. **Secret**: Masukkan secret yang sama dengan konfigurasi webhook secret di Gorun.
+7. **Which events would you like to trigger this webhook?**: Pilih *Just the push event*.
+8. Klik **Add webhook**.
 
 ---
 
@@ -117,18 +117,19 @@ go test -v ./...
 │   └── gorun/
 │       └── main.go          # Entrypoint server Gorun
 ├── internal/
-│   ├── config/              # Modul pembaca dan parser config.yaml
+│   ├── config/              # Modul pembaca config.yaml & kredensial auth
 │   ├── deployer/            # Engine eksekusi shell & concurrency lock
-│   ├── handler/             # HTTP controller, webhook validator, & router
-│   └── store/               # SQLite store untuk history & logs
+│   ├── handler/             # HTTP controller, auth middleware, CRUD & router
+│   └── store/               # SQLite store untuk projects, deployments, & logs
 ├── static/
 │   ├── css/
 │   │   └── style.css        # Vanilla CSS (Dark mode modern UI)
 │   └── js/
 │       └── htmx.min.js      # Library HTMX
 ├── templates/
-│   ├── dashboard.html       # Halaman utama (daftar aplikasi)
-│   ├── project.html         # Halaman detail & live terminal log
+│   ├── dashboard.html       # Halaman utama (daftar aplikasi & tombol Add)
+│   ├── project.html         # Halaman detail, logs, tombol Edit & Delete
+│   ├── project_form.html    # Form Create, Edit, dan Rename project
 │   └── status_fragment.html # Fragmen HTMX untuk auto-refresh polling
 ├── config.example.yaml      # Contoh file konfigurasi
 ├── go.mod

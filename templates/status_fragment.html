@@ -1,6 +1,6 @@
 <div id="deployment-status" 
      {{if or .IsDeploying (and .LatestDeployment (eq .LatestDeployment.Status "Deploying"))}}
-     hx-get="/app/{{.AppName}}/status" 
+     hx-get="/app/{{.Project.Name}}/status" 
      hx-trigger="every 2s" 
      hx-swap="outerHTML"
      {{end}}>

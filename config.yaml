@@ -1,9 +1,4 @@
 # Gorun Server Configuration
 port: 8080
-
-apps:
-  demo-app:
-    path: "./"
-    branch: "main"
-    webhook_secret: "secret-key-12345"
-    deploy_cmd: "echo '==> Pulling dependencies...'; sleep 1; echo '==> Building binary...'; sleep 1; echo '==> Restarting services...'; sleep 1; echo '==> Deployment finished successfully!'"
+username: "admin"
+password: "adminpassword"

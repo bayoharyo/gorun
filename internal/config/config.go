@@ -8,15 +8,9 @@ import (
 )
 
 type Config struct {
-	Port int                  `yaml:"port"`
-	Apps map[string]AppConfig `yaml:"apps"`
-}
-
-type AppConfig struct {
-	Path          string `yaml:"path"`
-	Branch        string `yaml:"branch"`         // Default: "main"
-	WebhookSecret string `yaml:"webhook_secret"`
-	DeployCmd     string `yaml:"deploy_cmd"`     // Default: "docker compose up -d --build"
+	Port     int    `yaml:"port"`
+	Username string `yaml:"username"`
+	Password string `yaml:"password"`
 }
 
 // Load reads and parses a YAML configuration file.
@@ -35,19 +29,11 @@ func Load(filepath string) (*Config, error) {
 	if cfg.Port <= 0 {
 		cfg.Port = 8080
 	}
-
-	if cfg.Apps == nil {
-		cfg.Apps = make(map[string]AppConfig)
+	if cfg.Username == "" {
+		cfg.Username = "admin"
 	}
-
-	for name, app := range cfg.Apps {
-		if app.Branch == "" {
-			app.Branch = "main"
-		}
-		if app.DeployCmd == "" {
-			app.DeployCmd = "docker compose up -d --build"
-		}
-		cfg.Apps[name] = app
+	if cfg.Password == "" {
+		cfg.Password = "admin"
 	}
 
 	return &cfg, nil

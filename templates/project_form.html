@@ -1,0 +1,133 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>{{if .IsEdit}}Edit {{.Project.Name}}{{else}}Add Project{{end}} — Gorun</title>
+    <link rel="stylesheet" href="/static/css/style.css?v=3">
+</head>
+<body class="bg-dark">
+    <header class="navbar">
+        <div class="container nav-content">
+            <a href="{{if .IsEdit}}/app/{{.Project.Name}}{{else}}/{{end}}" class="brand">
+                <span class="brand-accent">&larr;</span> {{if .IsEdit}}{{.Project.Name}}{{else}}Dashboard{{end}}
+            </a>
+        </div>
+    </header>
+
+    <main class="container main-content">
+        <div class="pf-page">
+
+            <div class="pf-page-header">
+                <h1>{{if .IsEdit}}Edit Configuration{{else}}Add New Project{{end}}</h1>
+                <p class="subtitle">{{if .IsEdit}}Update deployment settings for <strong>{{.Project.Name}}</strong>.{{else}}Connect a repository or local directory to start deploying.{{end}}</p>
+            </div>
+
+            {{if .Error}}
+            <div class="pf-error-banner">
+                <svg width="15" height="15" viewBox="0 0 15 15" fill="none" aria-hidden="true"><path d="M7.5 1a6.5 6.5 0 1 0 0 13A6.5 6.5 0 0 0 7.5 1Zm0 1a5.5 5.5 0 1 1 0 11A5.5 5.5 0 0 1 7.5 2Zm0 2.5a.5.5 0 0 1 .5.5v3a.5.5 0 0 1-1 0V5a.5.5 0 0 1 .5-.5Zm0 6a.75.75 0 1 1 0-1.5.75.75 0 0 1 0 1.5Z" fill="currentColor"/></svg>
+                {{.Error}}
+            </div>
+            {{end}}
+
+            <form class="pf-form" method="POST" action="{{if .IsEdit}}/app/{{.Project.Name}}/edit{{else}}/projects/new{{end}}">
+
+                {{if not .IsEdit}}
+                <div class="pf-row">
+                    <div class="pf-row-label">
+                        <label for="name">Project Name</label>
+                    </div>
+                    <div class="pf-row-control">
+                        <input type="text" id="name" name="name"
+                               value="{{.Project.Name}}"
+                               placeholder="my-app"
+                               required
+                               pattern="[a-z0-9]+(?:-[a-z0-9]+)*"
+                               title="Lowercase letters, numbers, and hyphens only">
+                        <p class="pf-note">Used as the URL path and webhook slug — e.g. <code>my-app</code> becomes <code>/app/my-app</code> and <code>/webhook/my-app</code>. Lowercase, numbers, hyphens only.</p>
+                    </div>
+                </div>
+                {{end}}
+
+                <div class="pf-row">
+                    <div class="pf-row-label">
+                        <label for="path">Working Directory</label>
+                    </div>
+                    <div class="pf-row-control">
+                        <input type="text" id="path" name="path"
+                               value="{{.Project.Path}}"
+                               placeholder="/home/ubuntu/my-app"
+                               required>
+                        <p class="pf-note">Absolute path on this server where <code>git pull</code> and your deploy command will run.</p>
+                    </div>
+                </div>
+
+                <div class="pf-row">
+                    <div class="pf-row-label">
+                        <label for="branch">Git Branch</label>
+                        <span class="pf-optional">optional</span>
+                    </div>
+                    <div class="pf-row-control">
+                        <input type="text" id="branch" name="branch"
+                               value="{{.Project.Branch}}"
+                               placeholder="main">
+                        <p class="pf-note">Branch to pull before running the deploy command. Defaults to <code>main</code>.</p>
+                    </div>
+                </div>
+
+                <div class="pf-row">
+                    <div class="pf-row-label">
+                        <label for="webhook_secret">Webhook Secret</label>
+                        <span class="pf-optional">optional</span>
+                    </div>
+                    <div class="pf-row-control">
+                        <input type="text" id="webhook_secret" name="webhook_secret"
+                               value="{{.Project.WebhookSecret}}"
+                               placeholder="a-random-secret-key">
+                        <p class="pf-note">Verifies the <code>X-Hub-Signature-256</code> header on GitHub webhook requests. Leave blank to skip verification.</p>
+                    </div>
+                </div>
+
+                <div class="pf-row">
+                    <div class="pf-row-label">
+                        <label for="deploy_cmd">Deploy Command</label>
+                        <span class="pf-optional">optional</span>
+                    </div>
+                    <div class="pf-row-control">
+                        <textarea id="deploy_cmd" name="deploy_cmd"
+                                  rows="3"
+                                  placeholder="docker compose up -d --build">{{.Project.DeployCmd}}</textarea>
+                        <p class="pf-note">Shell command executed inside the working directory after <code>git pull</code>. Defaults to <code>docker compose up -d --build</code>.</p>
+                    </div>
+                </div>
+
+                <div class="pf-actions">
+                    <a href="{{if .IsEdit}}/app/{{.Project.Name}}{{else}}/{{end}}" class="btn btn-secondary">Cancel</a>
+                    <button type="submit" class="btn btn-primary">
+                        {{if .IsEdit}}Save Changes{{else}}Create Project{{end}}
+                    </button>
+                </div>
+
+            </form>
+
+            {{if .IsEdit}}
+            <div class="pf-rename-zone">
+                <div class="pf-rename-zone-label">
+                    <span class="pf-rename-title">Rename Project</span>
+                    <span class="pf-rename-desc">Changes the URL slug and webhook endpoint. History is preserved.</span>
+                </div>
+                <form class="pf-rename-form" method="POST" action="/app/{{.Project.Name}}/rename">
+                    <input type="text" name="new_name"
+                           value="{{.Project.Name}}"
+                           placeholder="new-project-name"
+                           required
+                           pattern="[a-z0-9]+(?:-[a-z0-9]+)*">
+                    <button type="submit" class="btn btn-warning">Rename</button>
+                </form>
+            </div>
+            {{end}}
+
+        </div>
+    </main>
+</body>
+</html>

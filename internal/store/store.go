@@ -17,9 +17,23 @@ const (
 	StatusFailed    Status = "Failed"
 )
 
+// Project represents a deployment target configuration stored in the database.
+type Project struct {
+	ID            int64     `json:"id"`
+	Name          string    `json:"name"`
+	Path          string    `json:"path"`
+	Branch        string    `json:"branch"`
+	WebhookSecret string    `json:"webhook_secret"`
+	DeployCmd     string    `json:"deploy_cmd"`
+	CreatedAt     time.Time `json:"created_at"`
+	UpdatedAt     time.Time `json:"updated_at"`
+}
+
+// Deployment represents a deployment run record.
 type Deployment struct {
 	ID            string    `json:"id"`
-	AppName       string    `json:"app_name"`
+	ProjectID     int64     `json:"project_id"`
+	ProjectName   string    `json:"project_name"`
 	Status        Status    `json:"status"`
 	Logs          string    `json:"logs"`
 	TriggerSource string    `json:"trigger_source"` // "manual" or "webhook"
@@ -32,37 +46,248 @@ type Store struct {
 	mu sync.RWMutex
 }
 
-// NewStore initializes a SQLite database connection and sets up tables.
+// NewStore initializes a SQLite database connection and sets up tables with foreign keys enabled.
 func NewStore(dbPath string) (*Store, error) {
 	db, err := sql.Open("sqlite", dbPath)
 	if err != nil {
 		return nil, fmt.Errorf("failed to open database: %w", err)
 	}
 
-	// Configure connection pool for SQLite
+	// Configure connection pool for SQLite single-writer safety
 	db.SetMaxOpenConns(1)
 
-	createTableQuery := `
-	CREATE TABLE IF NOT EXISTS deployments (
-		id TEXT PRIMARY KEY,
-		app_name TEXT NOT NULL,
-		status TEXT NOT NULL,
-		logs TEXT NOT NULL DEFAULT '',
-		trigger_source TEXT NOT NULL DEFAULT 'manual',
-		created_at DATETIME NOT NULL,
-		updated_at DATETIME NOT NULL
+	// Enable foreign keys enforcement in SQLite (default is OFF)
+	if _, err := db.Exec("PRAGMA foreign_keys = ON;"); err != nil {
+		db.Close()
+		return nil, fmt.Errorf("failed to enable foreign keys: %w", err)
+	}
+
+	schema := `
+	CREATE TABLE IF NOT EXISTS projects (
+		id             INTEGER PRIMARY KEY AUTOINCREMENT,
+		name           TEXT    NOT NULL UNIQUE,
+		path           TEXT    NOT NULL,
+		branch         TEXT    NOT NULL DEFAULT 'main',
+		webhook_secret TEXT    NOT NULL DEFAULT '',
+		deploy_cmd     TEXT    NOT NULL DEFAULT '',
+		created_at     DATETIME NOT NULL,
+		updated_at     DATETIME NOT NULL
 	);
-	CREATE INDEX IF NOT EXISTS idx_deployments_app_name ON deployments(app_name);
+
+	CREATE TABLE IF NOT EXISTS deployments (
+		id             TEXT    PRIMARY KEY,
+		project_id     INTEGER NOT NULL REFERENCES projects(id) ON DELETE CASCADE,
+		project_name   TEXT    NOT NULL,
+		status         TEXT    NOT NULL,
+		logs           TEXT    NOT NULL DEFAULT '',
+		trigger_source TEXT    NOT NULL DEFAULT 'manual',
+		created_at     DATETIME NOT NULL,
+		updated_at     DATETIME NOT NULL
+	);
+
+	CREATE INDEX IF NOT EXISTS idx_deployments_project_id ON deployments(project_id);
 	CREATE INDEX IF NOT EXISTS idx_deployments_created_at ON deployments(created_at DESC);
 	`
 
-	if _, err := db.Exec(createTableQuery); err != nil {
+	if _, err := db.Exec(schema); err != nil {
 		db.Close()
 		return nil, fmt.Errorf("failed to create schema: %w", err)
 	}
 
 	return &Store{db: db}, nil
 }
+
+// --- Project CRUD ---
+
+// CreateProject inserts a new project and sets the generated ID.
+func (s *Store) CreateProject(p *Project) error {
+	s.mu.Lock()
+	defer s.mu.Unlock()
+
+	now := time.Now().UTC()
+	p.CreatedAt = now
+	p.UpdatedAt = now
+
+	if p.Branch == "" {
+		p.Branch = "main"
+	}
+	if p.DeployCmd == "" {
+		p.DeployCmd = "docker compose up -d --build"
+	}
+
+	query := `
+	INSERT INTO projects (name, path, branch, webhook_secret, deploy_cmd, created_at, updated_at)
+	VALUES (?, ?, ?, ?, ?, ?, ?)
+	`
+	res, err := s.db.Exec(query, p.Name, p.Path, p.Branch, p.WebhookSecret, p.DeployCmd, p.CreatedAt, p.UpdatedAt)
+	if err != nil {
+		return fmt.Errorf("failed to create project: %w", err)
+	}
+
+	id, err := res.LastInsertId()
+	if err != nil {
+		return fmt.Errorf("failed to retrieve last insert id: %w", err)
+	}
+	p.ID = id
+	return nil
+}
+
+// GetProject retrieves a project by unique name slug.
+func (s *Store) GetProject(name string) (*Project, error) {
+	s.mu.RLock()
+	defer s.mu.RUnlock()
+
+	query := `
+	SELECT id, name, path, branch, webhook_secret, deploy_cmd, created_at, updated_at
+	FROM projects
+	WHERE name = ?
+	`
+	var p Project
+	err := s.db.QueryRow(query, name).Scan(
+		&p.ID,
+		&p.Name,
+		&p.Path,
+		&p.Branch,
+		&p.WebhookSecret,
+		&p.DeployCmd,
+		&p.CreatedAt,
+		&p.UpdatedAt,
+	)
+	if err != nil {
+		if err == sql.ErrNoRows {
+			return nil, nil
+		}
+		return nil, fmt.Errorf("failed to get project by name: %w", err)
+	}
+	return &p, nil
+}
+
+// GetProjectByID retrieves a project by its primary key ID.
+func (s *Store) GetProjectByID(id int64) (*Project, error) {
+	s.mu.RLock()
+	defer s.mu.RUnlock()
+
+	query := `
+	SELECT id, name, path, branch, webhook_secret, deploy_cmd, created_at, updated_at
+	FROM projects
+	WHERE id = ?
+	`
+	var p Project
+	err := s.db.QueryRow(query, id).Scan(
+		&p.ID,
+		&p.Name,
+		&p.Path,
+		&p.Branch,
+		&p.WebhookSecret,
+		&p.DeployCmd,
+		&p.CreatedAt,
+		&p.UpdatedAt,
+	)
+	if err != nil {
+		if err == sql.ErrNoRows {
+			return nil, nil
+		}
+		return nil, fmt.Errorf("failed to get project by ID: %w", err)
+	}
+	return &p, nil
+}
+
+// ListProjects returns all configured projects ordered by creation time.
+func (s *Store) ListProjects() ([]*Project, error) {
+	s.mu.RLock()
+	defer s.mu.RUnlock()
+
+	query := `
+	SELECT id, name, path, branch, webhook_secret, deploy_cmd, created_at, updated_at
+	FROM projects
+	ORDER BY created_at ASC
+	`
+	rows, err := s.db.Query(query)
+	if err != nil {
+		return nil, fmt.Errorf("failed to list projects: %w", err)
+	}
+	defer rows.Close()
+
+	var list []*Project
+	for rows.Next() {
+		var p Project
+		if err := rows.Scan(
+			&p.ID,
+			&p.Name,
+			&p.Path,
+			&p.Branch,
+			&p.WebhookSecret,
+			&p.DeployCmd,
+			&p.CreatedAt,
+			&p.UpdatedAt,
+		); err != nil {
+			return nil, fmt.Errorf("failed to scan project row: %w", err)
+		}
+		list = append(list, &p)
+	}
+	if err := rows.Err(); err != nil {
+		return nil, fmt.Errorf("failed to iterate project rows: %w", err)
+	}
+	return list, nil
+}
+
+// UpdateProject updates an existing project's configurations (except id, name, and created_at).
+func (s *Store) UpdateProject(p *Project) error {
+	s.mu.Lock()
+	defer s.mu.Unlock()
+
+	p.UpdatedAt = time.Now().UTC()
+	query := `
+	UPDATE projects
+	SET path = ?, branch = ?, webhook_secret = ?, deploy_cmd = ?, updated_at = ?
+	WHERE id = ?
+	`
+	res, err := s.db.Exec(query, p.Path, p.Branch, p.WebhookSecret, p.DeployCmd, p.UpdatedAt, p.ID)
+	if err != nil {
+		return fmt.Errorf("failed to update project: %w", err)
+	}
+	n, _ := res.RowsAffected()
+	if n == 0 {
+		return fmt.Errorf("project id %d not found", p.ID)
+	}
+	return nil
+}
+
+// RenameProject updates a project's unique name slug.
+func (s *Store) RenameProject(id int64, newName string) error {
+	s.mu.Lock()
+	defer s.mu.Unlock()
+
+	now := time.Now().UTC()
+	query := `
+	UPDATE projects
+	SET name = ?, updated_at = ?
+	WHERE id = ?
+	`
+	res, err := s.db.Exec(query, newName, now, id)
+	if err != nil {
+		return fmt.Errorf("failed to rename project: %w", err)
+	}
+	n, _ := res.RowsAffected()
+	if n == 0 {
+		return fmt.Errorf("project id %d not found", id)
+	}
+	return nil
+}
+
+// DeleteProject deletes a project by its primary key ID (cascades to deployments).
+func (s *Store) DeleteProject(id int64) error {
+	s.mu.Lock()
+	defer s.mu.Unlock()
+
+	_, err := s.db.Exec("DELETE FROM projects WHERE id = ?", id)
+	if err != nil {
+		return fmt.Errorf("failed to delete project: %w", err)
+	}
+	return nil
+}
+
+// --- Deployment Operations ---
 
 // CreateDeployment inserts a new deployment record.
 func (s *Store) CreateDeployment(d *Deployment) error {
@@ -76,10 +301,10 @@ func (s *Store) CreateDeployment(d *Deployment) error {
 	d.UpdatedAt = now
 
 	query := `
-	INSERT INTO deployments (id, app_name, status, logs, trigger_source, created_at, updated_at)
-	VALUES (?, ?, ?, ?, ?, ?, ?)
+	INSERT INTO deployments (id, project_id, project_name, status, logs, trigger_source, created_at, updated_at)
+	VALUES (?, ?, ?, ?, ?, ?, ?, ?)
 	`
-	_, err := s.db.Exec(query, d.ID, d.AppName, string(d.Status), d.Logs, d.TriggerSource, d.CreatedAt, d.UpdatedAt)
+	_, err := s.db.Exec(query, d.ID, d.ProjectID, d.ProjectName, string(d.Status), d.Logs, d.TriggerSource, d.CreatedAt, d.UpdatedAt)
 	if err != nil {
 		return fmt.Errorf("failed to insert deployment: %w", err)
 	}
@@ -128,7 +353,7 @@ func (s *Store) GetDeployment(id string) (*Deployment, error) {
 	defer s.mu.RUnlock()
 
 	query := `
-	SELECT id, app_name, status, logs, trigger_source, created_at, updated_at
+	SELECT id, project_id, project_name, status, logs, trigger_source, created_at, updated_at
 	FROM deployments
 	WHERE id = ?
 	`
@@ -136,7 +361,8 @@ func (s *Store) GetDeployment(id string) (*Deployment, error) {
 	var statusStr string
 	err := s.db.QueryRow(query, id).Scan(
 		&d.ID,
-		&d.AppName,
+		&d.ProjectID,
+		&d.ProjectName,
 		&statusStr,
 		&d.Logs,
 		&d.TriggerSource,
@@ -153,23 +379,24 @@ func (s *Store) GetDeployment(id string) (*Deployment, error) {
 	return &d, nil
 }
 
-// GetLatestDeployment retrieves the most recent deployment for an application.
-func (s *Store) GetLatestDeployment(appName string) (*Deployment, error) {
+// GetLatestDeployment retrieves the most recent deployment for a project ID.
+func (s *Store) GetLatestDeployment(projectID int64) (*Deployment, error) {
 	s.mu.RLock()
 	defer s.mu.RUnlock()
 
 	query := `
-	SELECT id, app_name, status, logs, trigger_source, created_at, updated_at
+	SELECT id, project_id, project_name, status, logs, trigger_source, created_at, updated_at
 	FROM deployments
-	WHERE app_name = ?
+	WHERE project_id = ?
 	ORDER BY created_at DESC
 	LIMIT 1
 	`
 	var d Deployment
 	var statusStr string
-	err := s.db.QueryRow(query, appName).Scan(
+	err := s.db.QueryRow(query, projectID).Scan(
 		&d.ID,
-		&d.AppName,
+		&d.ProjectID,
+		&d.ProjectName,
 		&statusStr,
 		&d.Logs,
 		&d.TriggerSource,
@@ -186,8 +413,8 @@ func (s *Store) GetLatestDeployment(appName string) (*Deployment, error) {
 	return &d, nil
 }
 
-// ListDeployments returns the history of deployments for an application.
-func (s *Store) ListDeployments(appName string, limit int) ([]*Deployment, error) {
+// ListDeployments returns the history of deployments for a project ID.
+func (s *Store) ListDeployments(projectID int64, limit int) ([]*Deployment, error) {
 	s.mu.RLock()
 	defer s.mu.RUnlock()
 
@@ -196,13 +423,13 @@ func (s *Store) ListDeployments(appName string, limit int) ([]*Deployment, error
 	}
 
 	query := `
-	SELECT id, app_name, status, logs, trigger_source, created_at, updated_at
+	SELECT id, project_id, project_name, status, logs, trigger_source, created_at, updated_at
 	FROM deployments
-	WHERE app_name = ?
+	WHERE project_id = ?
 	ORDER BY created_at DESC
 	LIMIT ?
 	`
-	rows, err := s.db.Query(query, appName, limit)
+	rows, err := s.db.Query(query, projectID, limit)
 	if err != nil {
 		return nil, fmt.Errorf("failed to list deployments: %w", err)
 	}
@@ -212,11 +439,23 @@ func (s *Store) ListDeployments(appName string, limit int) ([]*Deployment, error
 	for rows.Next() {
 		var d Deployment
 		var statusStr string
-		if err := rows.Scan(&d.ID, &d.AppName, &statusStr, &d.Logs, &d.TriggerSource, &d.CreatedAt, &d.UpdatedAt); err != nil {
+		if err := rows.Scan(
+			&d.ID,
+			&d.ProjectID,
+			&d.ProjectName,
+			&statusStr,
+			&d.Logs,
+			&d.TriggerSource,
+			&d.CreatedAt,
+			&d.UpdatedAt,
+		); err != nil {
 			return nil, fmt.Errorf("failed to scan deployment row: %w", err)
 		}
 		d.Status = Status(statusStr)
 		list = append(list, &d)
+	}
+	if err := rows.Err(); err != nil {
+		return nil, fmt.Errorf("failed to iterate deployment rows: %w", err)
 	}
 	return list, nil
 }

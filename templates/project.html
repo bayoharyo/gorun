@@ -3,8 +3,8 @@
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <title>{{.AppName}} - Gorun Project</title>
-    <link rel="stylesheet" href="/static/css/style.css">
+    <title>{{.Project.Name}} - Gorun Project</title>
+    <link rel="stylesheet" href="/static/css/style.css?v=3">
     <script src="/static/js/htmx.min.js"></script>
 </head>
 <body class="bg-dark">
@@ -15,20 +15,28 @@
             <a href="/" class="brand">
                 <span class="brand-accent">&larr; Back to</span> Dashboard
             </a>
-            <span class="badge badge-subtle">App: {{.AppName}}</span>
+            <span class="badge badge-subtle">App: {{.Project.Name}}</span>
         </div>
     </header>
 
     <main class="container main-content">
         <div class="project-header">
             <div>
-                <h1>{{.AppName}}</h1>
-                <p class="subtitle">Directory: <code>{{.Config.Path}}</code> &bull; Branch: <code>{{.Config.Branch}}</code></p>
+                <h1>{{.Project.Name}}</h1>
+                <p class="subtitle">Directory: <code>{{.Project.Path}}</code> &bull; Branch: <code>{{.Project.Branch}}</code></p>
             </div>
-            <div>
+            <div class="project-actions">
+                <a href="/app/{{.Project.Name}}/edit" class="btn btn-secondary">Edit Config</a>
+                <button 
+                    class="btn btn-danger"
+                    hx-delete="/app/{{.Project.Name}}"
+                    hx-confirm="Are you sure you want to delete '{{.Project.Name}}'? All deployment history will also be permanently deleted."
+                    hx-target="body">
+                    Delete
+                </button>
                 <button 
                     class="btn btn-primary btn-lg"
-                    hx-post="/app/{{.AppName}}/deploy"
+                    hx-post="/app/{{.Project.Name}}/deploy"
                     hx-target="#deployment-status"
                     hx-swap="outerHTML">
                     Deploy Now
@@ -41,7 +49,7 @@
                 <h2>Live Deployment & Logs</h2>
                 <div id="deployment-status" 
                      {{if or .IsDeploying (and .LatestDeployment (eq .LatestDeployment.Status "Deploying"))}}
-                     hx-get="/app/{{.AppName}}/status" 
+                     hx-get="/app/{{.Project.Name}}/status" 
                      hx-trigger="every 2s" 
                      hx-swap="outerHTML"
                      {{end}}>
@@ -85,10 +93,10 @@
                     <h3>Webhook Configuration</h3>
                     <p class="meta-item">Send GitHub push events to:</p>
                     <div class="code-copy-box">
-                        <code>http://{{.Host}}/webhook/{{.AppName}}</code>
+                        <code>http://{{.Host}}/webhook/{{.Project.Name}}</code>
                     </div>
                     <p class="text-muted text-sm mt-2">
-                        Secret Key configured in <code>config.yaml</code>
+                        Set Webhook Payload URL in GitHub repository settings with Content type <code>application/json</code>.
                     </p>
                 </div>
 

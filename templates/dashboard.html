@@ -3,9 +3,9 @@
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <title>Gorun - Go Application Deployment Dashboard</title>
-    <link rel="stylesheet" href="/static/css/style.css">
-    <script src="/static/js/htmx.min.js"></script>
+    <title>Dashboard — Gorun</title>
+    <link rel="stylesheet" href="/static/css/style.css?v=2">
+    <script src="https://unpkg.com/htmx.org@1.9.10"></script>
 </head>
 <body class="bg-dark">
     <div id="toast-container" class="toast-container"></div>
@@ -20,9 +20,12 @@
     </header>
 
     <main class="container main-content">
-        <div class="header-section">
-            <h1>Configured Applications</h1>
-            <p class="subtitle">Deploy and manage your Go applications effortlessly</p>
+        <div class="header-section header-flex">
+            <div>
+                <h1>Configured Applications</h1>
+                <p class="subtitle">Deploy and manage your Go applications effortlessly</p>
+            </div>
+            <a href="/projects/new" class="btn btn-primary">+ Add Project</a>
         </div>
 
         <div class="apps-grid">
@@ -41,8 +44,8 @@
                     </span>
                 </div>
                 <div class="card-body">
-                    <p class="meta-item"><strong>Path:</strong> <code>{{.Config.Path}}</code></p>
-                    <p class="meta-item"><strong>Branch:</strong> <code>{{.Config.Branch}}</code></p>
+                    <p class="meta-item"><strong>Path:</strong> <code>{{.Project.Path}}</code></p>
+                    <p class="meta-item"><strong>Branch:</strong> <code>{{.Project.Branch}}</code></p>
                     <p class="meta-item"><strong>Last Run:</strong> {{if .LatestDeployment}}{{formatTime .LatestDeployment.CreatedAt}}{{else}}Never{{end}}</p>
                 </div>
                 <div class="card-footer">
@@ -58,7 +61,10 @@
             </div>
             {{else}}
             <div class="card empty-card">
-                <p>No applications configured yet. Check your <code>config.yaml</code>.</p>
+                <p>No applications configured yet.</p>
+                <div class="mt-4">
+                    <a href="/projects/new" class="btn btn-primary">+ Add Your First Project</a>
+                </div>
             </div>
             {{end}}
         </div>

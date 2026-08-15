@@ -12,14 +12,8 @@ func TestLoad(t *testing.T) {
 
 	yamlContent := `
 port: 9000
-apps:
-  myapp:
-    path: "/var/www/myapp"
-    webhook_secret: "supersecret"
-  customapp:
-    path: "/var/www/customapp"
-    branch: "develop"
-    deploy_cmd: "make deploy"
+username: "superadmin"
+password: "supersecretpassword"
 `
 
 	if err := os.WriteFile(configPath, []byte(yamlContent), 0644); err != nil {
@@ -34,30 +28,36 @@ apps:
 	if cfg.Port != 9000 {
 		t.Errorf("expected port 9000, got %d", cfg.Port)
 	}
+	if cfg.Username != "superadmin" {
+		t.Errorf("expected username 'superadmin', got %q", cfg.Username)
+	}
+	if cfg.Password != "supersecretpassword" {
+		t.Errorf("expected password 'supersecretpassword', got %q", cfg.Password)
+	}
+}
 
-	if len(cfg.Apps) != 2 {
-		t.Fatalf("expected 2 apps, got %d", len(cfg.Apps))
+func TestLoadDefaults(t *testing.T) {
+	tmpDir := t.TempDir()
+	configPath := filepath.Join(tmpDir, "config_empty.yaml")
+
+	yamlContent := `{}`
+
+	if err := os.WriteFile(configPath, []byte(yamlContent), 0644); err != nil {
+		t.Fatalf("failed to write test config: %v", err)
 	}
 
-	myApp, ok := cfg.Apps["myapp"]
-	if !ok {
-		t.Fatalf("expected 'myapp' to exist")
-	}
-	if myApp.Branch != "main" {
-		t.Errorf("expected default branch 'main', got %s", myApp.Branch)
-	}
-	if myApp.DeployCmd != "docker compose up -d --build" {
-		t.Errorf("expected default deploy command, got %s", myApp.DeployCmd)
-	}
-	if myApp.WebhookSecret != "supersecret" {
-		t.Errorf("expected webhook secret 'supersecret', got %s", myApp.WebhookSecret)
+	cfg, err := Load(configPath)
+	if err != nil {
+		t.Fatalf("unexpected error loading config: %v", err)
 	}
 
-	customApp := cfg.Apps["customapp"]
-	if customApp.Branch != "develop" {
-		t.Errorf("expected branch 'develop', got %s", customApp.Branch)
+	if cfg.Port != 8080 {
+		t.Errorf("expected default port 8080, got %d", cfg.Port)
 	}
-	if customApp.DeployCmd != "make deploy" {
-		t.Errorf("expected deploy command 'make deploy', got %s", customApp.DeployCmd)
+	if cfg.Username != "admin" {
+		t.Errorf("expected default username 'admin', got %q", cfg.Username)
+	}
+	if cfg.Password != "admin" {
+		t.Errorf("expected default password 'admin', got %q", cfg.Password)
 	}
 }

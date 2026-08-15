@@ -31,7 +31,10 @@ func main() {
 	if err != nil {
 		log.Fatalf("[FATAL] Failed to load configuration: %v", err)
 	}
-	log.Printf("[INFO] Loaded configuration with %d application(s)", len(cfg.Apps))
+	log.Printf("[INFO] Configuration loaded (port %d, auth user %q)", cfg.Port, cfg.Username)
+	if cfg.Password == "admin" {
+		log.Println("[WARNING] Security Warning: Default password 'admin' is being used. Please update 'password' in your configuration file for production environments.")
+	}
 
 	s, err := store.NewStore(*dbPath)
 	if err != nil {
