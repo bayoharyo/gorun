@@ -113,7 +113,72 @@ func TestStoreProjectCRUDAndCascade(t *testing.T) {
 		t.Fatalf("expected deployment history to persist with project ID")
 	}
 
-	// 7. Test Cascade Delete
+	// 7. Test Env Operations
+	env1, err := s.SetEnv(p.ID, "PORT", "8080")
+	if err != nil {
+		t.Fatalf("failed to set env: %v", err)
+	}
+	if env1.ID == 0 || env1.Key != "PORT" || env1.Value != "8080" {
+		t.Fatalf("unexpected env returned: %+v", env1)
+	}
+
+	// Update env (UPSERT)
+	env1Updated, err := s.SetEnv(p.ID, "PORT", "9090")
+	if err != nil {
+		t.Fatalf("failed to update env: %v", err)
+	}
+	if env1Updated.Value != "9090" {
+		t.Fatalf("expected updated value 9090, got %s", env1Updated.Value)
+	}
+
+	// Add second env
+	_, err = s.SetEnv(p.ID, "DATABASE_URL", "postgres://localhost/db")
+	if err != nil {
+		t.Fatalf("failed to add second env: %v", err)
+	}
+
+	envs, err := s.ListEnvs(p.ID)
+	if err != nil || len(envs) != 2 {
+		t.Fatalf("expected 2 envs, got %d, err: %v", len(envs), err)
+	}
+
+	// Delete one env
+	if err := s.DeleteEnv(p.ID, env1.ID); err != nil {
+		t.Fatalf("failed to delete env: %v", err)
+	}
+	envsAfterDel, err := s.ListEnvs(p.ID)
+	if err != nil || len(envsAfterDel) != 1 {
+		t.Fatalf("expected 1 env after deletion, got %d", len(envsAfterDel))
+	}
+
+	// 8. Test Domain Operations
+	dom1, err := s.AddDomain(p.ID, "api.example.com")
+	if err != nil {
+		t.Fatalf("failed to add domain: %v", err)
+	}
+	if dom1.ID == 0 || dom1.Domain != "api.example.com" {
+		t.Fatalf("unexpected domain returned: %+v", dom1)
+	}
+
+	dom2, err := s.AddDomain(p.ID, "app.example.com")
+	if err != nil {
+		t.Fatalf("failed to add domain 2: %v", err)
+	}
+
+	doms, err := s.ListDomains(p.ID)
+	if err != nil || len(doms) != 2 {
+		t.Fatalf("expected 2 domains, got %d, err: %v", len(doms), err)
+	}
+
+	if err := s.DeleteDomain(p.ID, dom2.ID); err != nil {
+		t.Fatalf("failed to delete domain: %v", err)
+	}
+	domsAfterDel, err := s.ListDomains(p.ID)
+	if err != nil || len(domsAfterDel) != 1 {
+		t.Fatalf("expected 1 domain after deletion, got %d", len(domsAfterDel))
+	}
+
+	// 9. Test Cascade Delete
 	if err := s.DeleteProject(p.ID); err != nil {
 		t.Fatalf("failed to delete project: %v", err)
 	}
@@ -131,5 +196,22 @@ func TestStoreProjectCRUDAndCascade(t *testing.T) {
 	}
 	if depAfterDelete != nil {
 		t.Fatalf("expected deployment to be deleted via foreign key cascade")
+	}
+
+	// Verify envs and domains are cascade deleted
+	envsAfterProjDelete, err := s.ListEnvs(p.ID)
+	if err != nil {
+		t.Fatalf("unexpected error querying envs after delete: %v", err)
+	}
+	if len(envsAfterProjDelete) != 0 {
+		t.Fatalf("expected 0 envs after project delete, got %d", len(envsAfterProjDelete))
+	}
+
+	domsAfterProjDelete, err := s.ListDomains(p.ID)
+	if err != nil {
+		t.Fatalf("unexpected error querying domains after delete: %v", err)
+	}
+	if len(domsAfterProjDelete) != 0 {
+		t.Fatalf("expected 0 domains after project delete, got %d", len(domsAfterProjDelete))
 	}
 }

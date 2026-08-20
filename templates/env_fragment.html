@@ -1,0 +1,52 @@
+<div id="env-card" class="card mt-4">
+    <div class="card-header">
+        <h3 class="app-title">Environment Variables</h3>
+        <span class="badge badge-subtle">{{len .Envs}} Variables</span>
+    </div>
+    <p class="subtitle mb-3">Variables injected into the application environment at build and runtime.</p>
+    
+    <form class="kv-form mb-3" 
+          hx-post="/app/{{.Project.Name}}/env" 
+          hx-target="#env-card" 
+          hx-swap="outerHTML">
+        <div class="kv-form-inputs">
+            <input type="text" name="key" placeholder="KEY (e.g. PORT)" required autocomplete="off" class="input-code">
+            <input type="text" name="value" placeholder="VALUE" required autocomplete="off" class="input-code">
+        </div>
+        <button type="submit" class="btn btn-secondary btn-sm">Add / Set</button>
+    </form>
+
+    <div class="kv-table-container">
+        {{if .Envs}}
+        <table class="kv-table">
+            <thead>
+                <tr>
+                    <th>Key</th>
+                    <th>Value</th>
+                    <th style="width: 50px;"></th>
+                </tr>
+            </thead>
+            <tbody>
+                {{range .Envs}}
+                <tr>
+                    <td class="kv-key"><code>{{.Key}}</code></td>
+                    <td class="kv-val"><code>{{.Value}}</code></td>
+                    <td class="kv-action">
+                        <button class="btn-icon-danger" 
+                                title="Delete variable"
+                                hx-delete="/app/{{$.Project.Name}}/env/{{.ID}}" 
+                                hx-target="#env-card" 
+                                hx-swap="outerHTML"
+                                hx-confirm="Delete environment variable '{{.Key}}'?">
+                            &times;
+                        </button>
+                    </td>
+                </tr>
+                {{end}}
+            </tbody>
+        </table>
+        {{else}}
+        <p class="text-muted text-sm" style="padding: 0.5rem 0;">No environment variables configured yet.</p>
+        {{end}}
+    </div>
+</div>

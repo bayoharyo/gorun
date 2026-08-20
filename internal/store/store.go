@@ -41,6 +41,24 @@ type Deployment struct {
 	UpdatedAt     time.Time `json:"updated_at"`
 }
 
+// ProjectEnv represents an environment variable key-value pair for a project.
+type ProjectEnv struct {
+	ID        int64     `json:"id"`
+	ProjectID int64     `json:"project_id"`
+	Key       string    `json:"key"`
+	Value     string    `json:"value"`
+	CreatedAt time.Time `json:"created_at"`
+	UpdatedAt time.Time `json:"updated_at"`
+}
+
+// ProjectDomain represents a custom domain mapped to a project.
+type ProjectDomain struct {
+	ID        int64     `json:"id"`
+	ProjectID int64     `json:"project_id"`
+	Domain    string    `json:"domain"`
+	CreatedAt time.Time `json:"created_at"`
+}
+
 type Store struct {
 	db *sql.DB
 	mu sync.RWMutex
@@ -85,8 +103,27 @@ func NewStore(dbPath string) (*Store, error) {
 		updated_at     DATETIME NOT NULL
 	);
 
+	CREATE TABLE IF NOT EXISTS project_envs (
+		id         INTEGER PRIMARY KEY AUTOINCREMENT,
+		project_id INTEGER NOT NULL REFERENCES projects(id) ON DELETE CASCADE,
+		key        TEXT    NOT NULL,
+		value      TEXT    NOT NULL,
+		created_at DATETIME NOT NULL,
+		updated_at DATETIME NOT NULL,
+		UNIQUE(project_id, key)
+	);
+
+	CREATE TABLE IF NOT EXISTS project_domains (
+		id         INTEGER PRIMARY KEY AUTOINCREMENT,
+		project_id INTEGER NOT NULL REFERENCES projects(id) ON DELETE CASCADE,
+		domain     TEXT    NOT NULL UNIQUE,
+		created_at DATETIME NOT NULL
+	);
+
 	CREATE INDEX IF NOT EXISTS idx_deployments_project_id ON deployments(project_id);
 	CREATE INDEX IF NOT EXISTS idx_deployments_created_at ON deployments(created_at DESC);
+	CREATE INDEX IF NOT EXISTS idx_project_envs_project_id ON project_envs(project_id);
+	CREATE INDEX IF NOT EXISTS idx_project_domains_project_id ON project_domains(project_id);
 	`
 
 	if _, err := db.Exec(schema); err != nil {
@@ -458,6 +495,151 @@ func (s *Store) ListDeployments(projectID int64, limit int) ([]*Deployment, erro
 		return nil, fmt.Errorf("failed to iterate deployment rows: %w", err)
 	}
 	return list, nil
+}
+
+// --- Environment Variables Operations ---
+
+// ListEnvs returns all environment variables for a given project ID ordered by key.
+func (s *Store) ListEnvs(projectID int64) ([]*ProjectEnv, error) {
+	s.mu.RLock()
+	defer s.mu.RUnlock()
+
+	query := `
+	SELECT id, project_id, key, value, created_at, updated_at
+	FROM project_envs
+	WHERE project_id = ?
+	ORDER BY key ASC
+	`
+	rows, err := s.db.Query(query, projectID)
+	if err != nil {
+		return nil, fmt.Errorf("failed to list envs: %w", err)
+	}
+	defer rows.Close()
+
+	var list []*ProjectEnv
+	for rows.Next() {
+		var e ProjectEnv
+		if err := rows.Scan(&e.ID, &e.ProjectID, &e.Key, &e.Value, &e.CreatedAt, &e.UpdatedAt); err != nil {
+			return nil, fmt.Errorf("failed to scan env row: %w", err)
+		}
+		list = append(list, &e)
+	}
+	if err := rows.Err(); err != nil {
+		return nil, fmt.Errorf("failed to iterate env rows: %w", err)
+	}
+	return list, nil
+}
+
+// SetEnv inserts or updates an environment variable for a project.
+func (s *Store) SetEnv(projectID int64, key, value string) (*ProjectEnv, error) {
+	s.mu.Lock()
+	defer s.mu.Unlock()
+
+	now := time.Now().UTC()
+	query := `
+	INSERT INTO project_envs (project_id, key, value, created_at, updated_at)
+	VALUES (?, ?, ?, ?, ?)
+	ON CONFLICT(project_id, key) DO UPDATE SET
+		value = excluded.value,
+		updated_at = excluded.updated_at
+	RETURNING id, project_id, key, value, created_at, updated_at
+	`
+	var e ProjectEnv
+	err := s.db.QueryRow(query, projectID, key, value, now, now).Scan(
+		&e.ID, &e.ProjectID, &e.Key, &e.Value, &e.CreatedAt, &e.UpdatedAt,
+	)
+	if err != nil {
+		return nil, fmt.Errorf("failed to set env: %w", err)
+	}
+	return &e, nil
+}
+
+// DeleteEnv removes an environment variable by ID for a project.
+func (s *Store) DeleteEnv(projectID int64, envID int64) error {
+	s.mu.Lock()
+	defer s.mu.Unlock()
+
+	query := `DELETE FROM project_envs WHERE id = ? AND project_id = ?`
+	res, err := s.db.Exec(query, envID, projectID)
+	if err != nil {
+		return fmt.Errorf("failed to delete env: %w", err)
+	}
+	n, _ := res.RowsAffected()
+	if n == 0 {
+		return fmt.Errorf("env id %d not found for project %d", envID, projectID)
+	}
+	return nil
+}
+
+// --- Custom Domain Operations ---
+
+// ListDomains returns all custom domains for a given project ID ordered by domain name.
+func (s *Store) ListDomains(projectID int64) ([]*ProjectDomain, error) {
+	s.mu.RLock()
+	defer s.mu.RUnlock()
+
+	query := `
+	SELECT id, project_id, domain, created_at
+	FROM project_domains
+	WHERE project_id = ?
+	ORDER BY domain ASC
+	`
+	rows, err := s.db.Query(query, projectID)
+	if err != nil {
+		return nil, fmt.Errorf("failed to list domains: %w", err)
+	}
+	defer rows.Close()
+
+	var list []*ProjectDomain
+	for rows.Next() {
+		var d ProjectDomain
+		if err := rows.Scan(&d.ID, &d.ProjectID, &d.Domain, &d.CreatedAt); err != nil {
+			return nil, fmt.Errorf("failed to scan domain row: %w", err)
+		}
+		list = append(list, &d)
+	}
+	if err := rows.Err(); err != nil {
+		return nil, fmt.Errorf("failed to iterate domain rows: %w", err)
+	}
+	return list, nil
+}
+
+// AddDomain adds a custom domain for a project.
+func (s *Store) AddDomain(projectID int64, domain string) (*ProjectDomain, error) {
+	s.mu.Lock()
+	defer s.mu.Unlock()
+
+	now := time.Now().UTC()
+	query := `
+	INSERT INTO project_domains (project_id, domain, created_at)
+	VALUES (?, ?, ?)
+	RETURNING id, project_id, domain, created_at
+	`
+	var d ProjectDomain
+	err := s.db.QueryRow(query, projectID, domain, now).Scan(
+		&d.ID, &d.ProjectID, &d.Domain, &d.CreatedAt,
+	)
+	if err != nil {
+		return nil, fmt.Errorf("failed to add domain: %w", err)
+	}
+	return &d, nil
+}
+
+// DeleteDomain removes a custom domain by ID for a project.
+func (s *Store) DeleteDomain(projectID int64, domainID int64) error {
+	s.mu.Lock()
+	defer s.mu.Unlock()
+
+	query := `DELETE FROM project_domains WHERE id = ? AND project_id = ?`
+	res, err := s.db.Exec(query, domainID, projectID)
+	if err != nil {
+		return fmt.Errorf("failed to delete domain: %w", err)
+	}
+	n, _ := res.RowsAffected()
+	if n == 0 {
+		return fmt.Errorf("domain id %d not found for project %d", domainID, projectID)
+	}
+	return nil
 }
 
 // Close closes the database connection.

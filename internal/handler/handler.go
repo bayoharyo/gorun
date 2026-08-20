@@ -104,6 +104,12 @@ func (h *Handler) RegisterRoutes(mux *http.ServeMux) {
 	mux.HandleFunc("POST /app/{name}/deploy", h.basicAuth(h.handleTriggerDeploy))
 	mux.HandleFunc("GET /app/{name}/status", h.basicAuth(h.handleGetStatus))
 
+	// Environment Variables & Custom Domains Endpoints
+	mux.HandleFunc("POST /app/{name}/env", h.basicAuth(h.handleAddEnv))
+	mux.HandleFunc("DELETE /app/{name}/env/{id}", h.basicAuth(h.handleDeleteEnv))
+	mux.HandleFunc("POST /app/{name}/domain", h.basicAuth(h.handleAddDomain))
+	mux.HandleFunc("DELETE /app/{name}/domain/{id}", h.basicAuth(h.handleDeleteDomain))
+
 	// Project CRUD Form Endpoints
 	mux.HandleFunc("GET /projects/new", h.basicAuth(h.handleNewProjectForm))
 	mux.HandleFunc("POST /projects/new", h.basicAuth(h.handleCreateProject))
@@ -168,6 +174,8 @@ type ProjectData struct {
 	History          []*store.Deployment
 	IsDeploying      bool
 	Host             string
+	Envs             []*store.ProjectEnv
+	Domains          []*store.ProjectDomain
 }
 
 func (h *Handler) lookupProject(w http.ResponseWriter, name string) (*store.Project, bool) {
@@ -201,12 +209,24 @@ func (h *Handler) handleProject(w http.ResponseWriter, r *http.Request) {
 		log.Printf("[ERROR] failed to get history for %s: %v", name, err)
 	}
 
+	envs, err := h.store.ListEnvs(proj.ID)
+	if err != nil {
+		log.Printf("[ERROR] failed to get envs for %s: %v", name, err)
+	}
+
+	domains, err := h.store.ListDomains(proj.ID)
+	if err != nil {
+		log.Printf("[ERROR] failed to get domains for %s: %v", name, err)
+	}
+
 	data := ProjectData{
 		Project:          proj,
 		LatestDeployment: latest,
 		History:          history,
 		IsDeploying:      h.deployer.IsDeploying(proj.ID),
 		Host:             r.Host,
+		Envs:             envs,
+		Domains:          domains,
 	}
 
 	if err := h.tmpl.ExecuteTemplate(w, "project.html", data); err != nil {
@@ -265,6 +285,160 @@ func (h *Handler) renderStatusFragment(w http.ResponseWriter, proj *store.Projec
 	if err := h.tmpl.ExecuteTemplate(w, "status_fragment.html", data); err != nil {
 		http.Error(w, fmt.Sprintf("Template fragment error: %v", err), http.StatusInternalServerError)
 	}
+}
+
+// --- Environment Variables & Custom Domains Handlers ---
+
+type EnvFragmentData struct {
+	Project *store.Project
+	Envs    []*store.ProjectEnv
+}
+
+func (h *Handler) renderEnvFragment(w http.ResponseWriter, proj *store.Project) {
+	envs, err := h.store.ListEnvs(proj.ID)
+	if err != nil {
+		log.Printf("[ERROR] failed to list envs for %s: %v", proj.Name, err)
+	}
+	data := EnvFragmentData{
+		Project: proj,
+		Envs:    envs,
+	}
+	if err := h.tmpl.ExecuteTemplate(w, "env_fragment.html", data); err != nil {
+		http.Error(w, fmt.Sprintf("Template fragment error: %v", err), http.StatusInternalServerError)
+	}
+}
+
+func (h *Handler) handleAddEnv(w http.ResponseWriter, r *http.Request) {
+	name := r.PathValue("name")
+	proj, ok := h.lookupProject(w, name)
+	if !ok {
+		return
+	}
+
+	if err := r.ParseForm(); err != nil {
+		http.Error(w, "Bad request", http.StatusBadRequest)
+		return
+	}
+
+	key := strings.TrimSpace(r.FormValue("key"))
+	val := strings.TrimSpace(r.FormValue("value"))
+
+	if key == "" {
+		h.setToast(w, "Environment variable key cannot be empty", "error")
+		h.renderEnvFragment(w, proj)
+		return
+	}
+
+	if _, err := h.store.SetEnv(proj.ID, key, val); err != nil {
+		log.Printf("[ERROR] failed to set env for %s: %v", name, err)
+		h.setToast(w, fmt.Sprintf("Failed to save environment variable: %v", err), "error")
+		h.renderEnvFragment(w, proj)
+		return
+	}
+
+	h.setToast(w, fmt.Sprintf("Saved environment variable %s", key), "success")
+	h.renderEnvFragment(w, proj)
+}
+
+func (h *Handler) handleDeleteEnv(w http.ResponseWriter, r *http.Request) {
+	name := r.PathValue("name")
+	proj, ok := h.lookupProject(w, name)
+	if !ok {
+		return
+	}
+
+	idStr := r.PathValue("id")
+	var id int64
+	if _, err := fmt.Sscanf(idStr, "%d", &id); err != nil {
+		http.Error(w, "Invalid env ID", http.StatusBadRequest)
+		return
+	}
+
+	if err := h.store.DeleteEnv(proj.ID, id); err != nil {
+		log.Printf("[ERROR] failed to delete env %d for %s: %v", id, name, err)
+		h.setToast(w, "Failed to delete environment variable", "error")
+	} else {
+		h.setToast(w, "Environment variable removed", "info")
+	}
+
+	h.renderEnvFragment(w, proj)
+}
+
+type DomainFragmentData struct {
+	Project *store.Project
+	Domains []*store.ProjectDomain
+}
+
+func (h *Handler) renderDomainFragment(w http.ResponseWriter, proj *store.Project) {
+	domains, err := h.store.ListDomains(proj.ID)
+	if err != nil {
+		log.Printf("[ERROR] failed to list domains for %s: %v", proj.Name, err)
+	}
+	data := DomainFragmentData{
+		Project: proj,
+		Domains: domains,
+	}
+	if err := h.tmpl.ExecuteTemplate(w, "domain_fragment.html", data); err != nil {
+		http.Error(w, fmt.Sprintf("Template fragment error: %v", err), http.StatusInternalServerError)
+	}
+}
+
+func (h *Handler) handleAddDomain(w http.ResponseWriter, r *http.Request) {
+	name := r.PathValue("name")
+	proj, ok := h.lookupProject(w, name)
+	if !ok {
+		return
+	}
+
+	if err := r.ParseForm(); err != nil {
+		http.Error(w, "Bad request", http.StatusBadRequest)
+		return
+	}
+
+	domain := strings.ToLower(strings.TrimSpace(r.FormValue("domain")))
+	domain = strings.TrimPrefix(domain, "http://")
+	domain = strings.TrimPrefix(domain, "https://")
+	domain = strings.TrimRight(domain, "/")
+
+	if domain == "" {
+		h.setToast(w, "Domain name cannot be empty", "error")
+		h.renderDomainFragment(w, proj)
+		return
+	}
+
+	if _, err := h.store.AddDomain(proj.ID, domain); err != nil {
+		log.Printf("[ERROR] failed to add domain for %s: %v", name, err)
+		h.setToast(w, fmt.Sprintf("Failed to add domain: %v", err), "error")
+		h.renderDomainFragment(w, proj)
+		return
+	}
+
+	h.setToast(w, fmt.Sprintf("Added domain %s", domain), "success")
+	h.renderDomainFragment(w, proj)
+}
+
+func (h *Handler) handleDeleteDomain(w http.ResponseWriter, r *http.Request) {
+	name := r.PathValue("name")
+	proj, ok := h.lookupProject(w, name)
+	if !ok {
+		return
+	}
+
+	idStr := r.PathValue("id")
+	var id int64
+	if _, err := fmt.Sscanf(idStr, "%d", &id); err != nil {
+		http.Error(w, "Invalid domain ID", http.StatusBadRequest)
+		return
+	}
+
+	if err := h.store.DeleteDomain(proj.ID, id); err != nil {
+		log.Printf("[ERROR] failed to delete domain %d for %s: %v", id, name, err)
+		h.setToast(w, "Failed to delete domain", "error")
+	} else {
+		h.setToast(w, "Domain removed", "info")
+	}
+
+	h.renderDomainFragment(w, proj)
 }
 
 // --- CRUD Handlers ---

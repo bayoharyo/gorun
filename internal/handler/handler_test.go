@@ -4,6 +4,7 @@ import (
 	"crypto/hmac"
 	"crypto/sha256"
 	"encoding/hex"
+	"fmt"
 	"net/http"
 	"net/http/httptest"
 	"net/url"
@@ -30,6 +31,8 @@ func setupTestEnvironment(t *testing.T) (*Handler, *http.ServeMux, *store.Store,
 	_ = os.WriteFile(filepath.Join(templatesDir, "dashboard.html"), []byte(`Dashboard: {{range .Apps}}{{.Name}} {{end}}`), 0644)
 	_ = os.WriteFile(filepath.Join(templatesDir, "project.html"), []byte(`Project: {{.Project.Name}}`), 0644)
 	_ = os.WriteFile(filepath.Join(templatesDir, "status_fragment.html"), []byte(`<div id="deployment-status">{{.Project.Name}}</div>`), 0644)
+	_ = os.WriteFile(filepath.Join(templatesDir, "env_fragment.html"), []byte(`<div id="env-card">{{range .Envs}}{{.Key}}={{.Value}} {{end}}</div>`), 0644)
+	_ = os.WriteFile(filepath.Join(templatesDir, "domain_fragment.html"), []byte(`<div id="domain-card">{{range .Domains}}{{.Domain}} {{end}}</div>`), 0644)
 	_ = os.WriteFile(filepath.Join(templatesDir, "project_form.html"), []byte(`Form: {{if .IsEdit}}Edit{{else}}Create{{end}} {{if .Error}}Error: {{.Error}}{{end}}`), 0644)
 
 	cfg := &config.Config{
@@ -328,5 +331,80 @@ func TestWebhookHandler(t *testing.T) {
 
 	if rr.Code != http.StatusAccepted {
 		t.Fatalf("expected status 202 for valid webhook, got %d", rr.Code)
+	}
+}
+
+func TestEnvAndDomainRoutes(t *testing.T) {
+	_, mux, s, proj := setupTestEnvironment(t)
+
+	// 1. POST /app/demo-app/env (add env)
+	formData := url.Values{
+		"key":   {"PORT"},
+		"value": {"8080"},
+	}
+	req := newAuthRequest("POST", "/app/demo-app/env", strings.NewReader(formData.Encode()))
+	req.Header.Set("Content-Type", "application/x-www-form-urlencoded")
+	rr := httptest.NewRecorder()
+	mux.ServeHTTP(rr, req)
+
+	if rr.Code != http.StatusOK {
+		t.Fatalf("expected status 200 on add env, got %d", rr.Code)
+	}
+	if !strings.Contains(rr.Body.String(), "PORT=8080") {
+		t.Fatalf("expected rendered env in fragment, got %s", rr.Body.String())
+	}
+
+	envs, err := s.ListEnvs(proj.ID)
+	if err != nil || len(envs) != 1 {
+		t.Fatalf("expected 1 env in store, got %d", len(envs))
+	}
+
+	// 2. DELETE /app/demo-app/env/{id}
+	envID := envs[0].ID
+	req = newAuthRequest("DELETE", fmt.Sprintf("/app/demo-app/env/%d", envID), nil)
+	rr = httptest.NewRecorder()
+	mux.ServeHTTP(rr, req)
+
+	if rr.Code != http.StatusOK {
+		t.Fatalf("expected status 200 on delete env, got %d", rr.Code)
+	}
+	envsAfterDel, _ := s.ListEnvs(proj.ID)
+	if len(envsAfterDel) != 0 {
+		t.Fatalf("expected 0 envs after deletion, got %d", len(envsAfterDel))
+	}
+
+	// 3. POST /app/demo-app/domain (add domain)
+	domainData := url.Values{
+		"domain": {"https://api.example.com/"},
+	}
+	req = newAuthRequest("POST", "/app/demo-app/domain", strings.NewReader(domainData.Encode()))
+	req.Header.Set("Content-Type", "application/x-www-form-urlencoded")
+	rr = httptest.NewRecorder()
+	mux.ServeHTTP(rr, req)
+
+	if rr.Code != http.StatusOK {
+		t.Fatalf("expected status 200 on add domain, got %d", rr.Code)
+	}
+	if !strings.Contains(rr.Body.String(), "api.example.com") {
+		t.Fatalf("expected cleaned domain in fragment, got %s", rr.Body.String())
+	}
+
+	domains, err := s.ListDomains(proj.ID)
+	if err != nil || len(domains) != 1 || domains[0].Domain != "api.example.com" {
+		t.Fatalf("expected domain 'api.example.com' in store, got %+v", domains)
+	}
+
+	// 4. DELETE /app/demo-app/domain/{id}
+	domID := domains[0].ID
+	req = newAuthRequest("DELETE", fmt.Sprintf("/app/demo-app/domain/%d", domID), nil)
+	rr = httptest.NewRecorder()
+	mux.ServeHTTP(rr, req)
+
+	if rr.Code != http.StatusOK {
+		t.Fatalf("expected status 200 on delete domain, got %d", rr.Code)
+	}
+	domainsAfterDel, _ := s.ListDomains(proj.ID)
+	if len(domainsAfterDel) != 0 {
+		t.Fatalf("expected 0 domains after deletion, got %d", len(domainsAfterDel))
 	}
 }

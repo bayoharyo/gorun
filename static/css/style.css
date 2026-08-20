@@ -767,3 +767,133 @@ body {
     }
 }
 
+/* ─── Key-Value & Domain Tables (kv-*) ─────────────────────────────── */
+
+.btn-sm {
+    padding: 0.4rem 0.85rem;
+    font-size: 0.8rem;
+}
+
+.kv-form {
+    display: flex;
+    gap: 0.75rem;
+    align-items: center;
+}
+
+.kv-form-inputs {
+    display: flex;
+    flex: 1;
+    gap: 0.75rem;
+}
+
+.kv-form-inputs input[type="text"] {
+    flex: 1;
+    padding: 0.45rem 0.75rem;
+    background-color: var(--bg-surface);
+    border: 1px solid var(--border-color);
+    border-radius: 6px;
+    color: var(--text-primary);
+    font-family: var(--font-mono);
+    font-size: 0.85rem;
+    transition: border-color 0.15s ease, box-shadow 0.15s ease;
+}
+
+.kv-form-inputs input[type="text"]:focus {
+    outline: none;
+    border-color: var(--border-focus);
+    box-shadow: 0 0 0 2px rgba(0, 173, 216, 0.15);
+}
+
+.kv-table-container {
+    overflow-x: auto;
+}
+
+.kv-table {
+    width: 100%;
+    border-collapse: collapse;
+    font-size: 0.85rem;
+}
+
+.kv-table th {
+    text-align: left;
+    padding: 0.5rem 0.75rem;
+    color: var(--text-secondary);
+    font-size: 0.75rem;
+    text-transform: uppercase;
+    letter-spacing: 0.5px;
+    border-bottom: 1px solid var(--border-color);
+}
+
+.kv-table td {
+    padding: 0.6rem 0.75rem;
+    border-bottom: 1px solid var(--border-color);
+    vertical-align: middle;
+}
+
+.kv-table tr:last-child td {
+    border-bottom: none;
+}
+
+.kv-key code {
+    background-color: var(--bg-surface);
+    padding: 0.2rem 0.4rem;
+    border-radius: 4px;
+    color: var(--accent-blue);
+    font-family: var(--font-mono);
+    font-size: 0.82rem;
+}
+
+.kv-val code {
+    background-color: rgba(255, 255, 255, 0.05);
+    padding: 0.2rem 0.4rem;
+    border-radius: 4px;
+    color: var(--text-primary);
+    font-family: var(--font-mono);
+    font-size: 0.82rem;
+    word-break: break-all;
+}
+
+.kv-action {
+    text-align: right;
+}
+
+.btn-icon-danger {
+    background: transparent;
+    border: none;
+    color: var(--text-muted);
+    font-size: 1.25rem;
+    line-height: 1;
+    cursor: pointer;
+    padding: 0.2rem 0.5rem;
+    border-radius: 4px;
+    transition: all 0.15s ease;
+}
+
+.btn-icon-danger:hover {
+    color: #ef4444;
+    background-color: rgba(239, 68, 68, 0.15);
+}
+
+.domain-link {
+    color: var(--accent-blue);
+    text-decoration: none;
+    font-family: var(--font-mono);
+    font-size: 0.88rem;
+    font-weight: 500;
+}
+
+.domain-link:hover {
+    text-decoration: underline;
+}
+
+@media (max-width: 600px) {
+    .kv-form {
+        flex-direction: column;
+        align-items: stretch;
+    }
+    .kv-form-inputs {
+        flex-direction: column;
+    }
+}
+
+

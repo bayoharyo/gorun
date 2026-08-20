@@ -1,0 +1,51 @@
+<div id="domain-card" class="card mt-4">
+    <div class="card-header">
+        <h3 class="app-title">Custom Domains</h3>
+        <span class="badge badge-subtle">{{len .Domains}} Domains</span>
+    </div>
+    <p class="subtitle mb-3">Map custom domains to your application with automatic SSL via Caddy.</p>
+    
+    <form class="kv-form mb-3" 
+          hx-post="/app/{{.Project.Name}}/domain" 
+          hx-target="#domain-card" 
+          hx-swap="outerHTML">
+        <div class="kv-form-inputs">
+            <input type="text" name="domain" placeholder="example.com or api.example.com" required autocomplete="off" class="input-code">
+        </div>
+        <button type="submit" class="btn btn-secondary btn-sm">Add Domain</button>
+    </form>
+
+    <div class="kv-table-container">
+        {{if .Domains}}
+        <table class="kv-table">
+            <thead>
+                <tr>
+                    <th>Domain</th>
+                    <th>Added</th>
+                    <th style="width: 50px;"></th>
+                </tr>
+            </thead>
+            <tbody>
+                {{range .Domains}}
+                <tr>
+                    <td class="kv-key"><a href="https://{{.Domain}}" target="_blank" rel="noopener noreferrer" class="domain-link">{{.Domain}} &nearr;</a></td>
+                    <td class="kv-val text-muted text-sm">{{formatTime .CreatedAt}}</td>
+                    <td class="kv-action">
+                        <button class="btn-icon-danger" 
+                                title="Delete domain"
+                                hx-delete="/app/{{$.Project.Name}}/domain/{{.ID}}" 
+                                hx-target="#domain-card" 
+                                hx-swap="outerHTML"
+                                hx-confirm="Remove domain '{{.Domain}}'?">
+                            &times;
+                        </button>
+                    </td>
+                </tr>
+                {{end}}
+            </tbody>
+        </table>
+        {{else}}
+        <p class="text-muted text-sm" style="padding: 0.5rem 0;">No custom domains configured yet.</p>
+        {{end}}
+    </div>
+</div>
