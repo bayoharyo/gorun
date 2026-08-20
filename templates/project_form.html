@@ -96,8 +96,8 @@
                     <div class="pf-row-control">
                         <textarea id="deploy_cmd" name="deploy_cmd"
                                   rows="3"
-                                  placeholder="docker compose up -d --build">{{.Project.DeployCmd}}</textarea>
-                        <p class="pf-note">Shell command executed inside the working directory after <code>git pull</code>. Defaults to <code>docker compose up -d --build</code>.</p>
+                                  placeholder="Leave empty for zero-config Go Docker build">{{.Project.DeployCmd}}</textarea>
+                        <p class="pf-note">Optional custom command executed after <code>git pull</code>. Leave blank for automatic Zero-Config Go Docker build &amp; deploy.</p>
                     </div>
                 </div>
 

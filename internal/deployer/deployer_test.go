@@ -1,6 +1,7 @@
 package deployer
 
 import (
+	"os"
 	"path/filepath"
 	"testing"
 	"time"
@@ -61,5 +62,79 @@ func TestDeployerConcurrency(t *testing.T) {
 	}
 	if dep.Status != store.StatusSuccess && dep.Status != store.StatusFailed {
 		t.Errorf("expected final status, got %s", dep.Status)
+	}
+}
+
+func TestGenerateDockerfile(t *testing.T) {
+	tmpDir := t.TempDir()
+
+	// 1. Initial generation
+	created, err := GenerateDockerfile(tmpDir)
+	if err != nil {
+		t.Fatalf("unexpected error generating Dockerfile: %v", err)
+	}
+	if !created {
+		t.Errorf("expected Dockerfile to be created")
+	}
+
+	dockerfilePath := filepath.Join(tmpDir, "Dockerfile")
+	content, err := os.ReadFile(dockerfilePath)
+	if err != nil {
+		t.Fatalf("failed to read generated Dockerfile: %v", err)
+	}
+	if len(content) == 0 {
+		t.Errorf("expected Dockerfile to have content")
+	}
+
+	// 2. Second call should not overwrite
+	createdAgain, err := GenerateDockerfile(tmpDir)
+	if err != nil {
+		t.Fatalf("unexpected error on second call: %v", err)
+	}
+	if createdAgain {
+		t.Errorf("expected created to be false for existing Dockerfile")
+	}
+}
+
+func TestDockerNamingAndArgs(t *testing.T) {
+	projectID := int64(42)
+	img := ImageName(projectID)
+	if img != "gorun-img-42" {
+		t.Errorf("expected gorun-img-42, got %s", img)
+	}
+
+	cnt := ContainerName(projectID)
+	if cnt != "gorun-app-42" {
+		t.Errorf("expected gorun-app-42, got %s", cnt)
+	}
+
+	port := HostPort(projectID)
+	if port != 8042 {
+		t.Errorf("expected 8042, got %d", port)
+	}
+
+	envs := []*store.ProjectEnv{
+		{Key: "PORT", Value: "8080"},
+		{Key: "DB_URL", Value: "postgres://localhost:5432/db"},
+	}
+
+	args := BuildDockerRunArgs(projectID, envs)
+	expectedArgs := []string{
+		"run", "-d",
+		"--name", "gorun-app-42",
+		"-p", "8042:8080",
+		"-e", "PORT=8080",
+		"-e", "DB_URL=postgres://localhost:5432/db",
+		"gorun-img-42",
+	}
+
+	if len(args) != len(expectedArgs) {
+		t.Fatalf("expected %d args, got %d: %v", len(expectedArgs), len(args), args)
+	}
+
+	for i, arg := range args {
+		if arg != expectedArgs[i] {
+			t.Errorf("arg[%d] expected %s, got %s", i, expectedArgs[i], arg)
+		}
 	}
 }
