@@ -103,12 +103,12 @@ func TestDockerNamingAndArgs(t *testing.T) {
 		t.Errorf("expected gorun-img-42, got %s", img)
 	}
 
-	cnt := ContainerName(projectID)
-	if cnt != "gorun-app-42" {
-		t.Errorf("expected gorun-app-42, got %s", cnt)
+	cnt := ContainerName(projectID, "blue")
+	if cnt != "gorun-app-42-blue" {
+		t.Errorf("expected gorun-app-42-blue, got %s", cnt)
 	}
 
-	port := HostPort(projectID)
+	port := HostPort(projectID, "blue")
 	if port != 8042 {
 		t.Errorf("expected 8042, got %d", port)
 	}
@@ -118,10 +118,10 @@ func TestDockerNamingAndArgs(t *testing.T) {
 		{Key: "DB_URL", Value: "postgres://localhost:5432/db"},
 	}
 
-	args := BuildDockerRunArgs(projectID, envs)
+	args := BuildDockerRunArgs(projectID, "blue", envs)
 	expectedArgs := []string{
 		"run", "-d",
-		"--name", "gorun-app-42",
+		"--name", "gorun-app-42-blue",
 		"-p", "8042:8080",
 		"-e", "PORT=8080",
 		"-e", "DB_URL=postgres://localhost:5432/db",

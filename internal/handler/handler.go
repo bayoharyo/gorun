@@ -415,6 +415,7 @@ func (h *Handler) handleAddDomain(w http.ResponseWriter, r *http.Request) {
 	}
 
 	h.setToast(w, fmt.Sprintf("Added domain %s", domain), "success")
+	_ = h.deployer.SyncCaddyConfig()
 	h.renderDomainFragment(w, proj)
 }
 
@@ -437,6 +438,7 @@ func (h *Handler) handleDeleteDomain(w http.ResponseWriter, r *http.Request) {
 		h.setToast(w, "Failed to delete domain", "error")
 	} else {
 		h.setToast(w, "Domain removed", "info")
+		_ = h.deployer.SyncCaddyConfig()
 	}
 
 	h.renderDomainFragment(w, proj)
@@ -628,6 +630,8 @@ func (h *Handler) handleDeleteProject(w http.ResponseWriter, r *http.Request) {
 		http.Error(w, fmt.Sprintf("Failed to delete project: %v", err), http.StatusInternalServerError)
 		return
 	}
+
+	_ = h.deployer.SyncCaddyConfig()
 
 	// HX-Redirect header tells HTMX client to navigate to root
 	w.Header().Set("HX-Redirect", "/")

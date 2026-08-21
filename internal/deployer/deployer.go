@@ -157,16 +157,23 @@ func (d *Deployer) run(deployID string, proj *store.Project, source string) {
 		return
 	}
 
-	// 3d. Stop and remove existing container
-	containerName := ContainerName(proj.ID)
-	logWriter(fmt.Sprintf("[%s] Removing previous container (if exists): %s", time.Now().Format("15:04:05"), containerName))
-	rmCmd := exec.Command("docker", "rm", "-f", containerName)
-	_ = runAndStreamOutput(rmCmd, logWriter)
+	// Determine colors for Blue/Green Deployment
+	currentColor := GetActiveColor(proj.ID)
+	targetColor := "blue"
+	if currentColor == "blue" {
+		targetColor = "green"
+	}
 
-	// 3e. Docker run
-	hostPort := HostPort(proj.ID)
-	logWriter(fmt.Sprintf("[%s] Starting container %s on port %d...", time.Now().Format("15:04:05"), containerName, hostPort))
-	runArgs := BuildDockerRunArgs(proj.ID, envs)
+	targetContainer := ContainerName(proj.ID, targetColor)
+	targetPort := HostPort(proj.ID, targetColor)
+
+	// 3d. Stop and remove any leftover target container (if exists)
+	logWriter(fmt.Sprintf("[%s] Cleaning up target environment (%s)...", time.Now().Format("15:04:05"), targetColor))
+	exec.Command("docker", "rm", "-f", targetContainer).Run()
+
+	// 3e. Docker run new container
+	logWriter(fmt.Sprintf("[%s] Starting new container %s on port %d...", time.Now().Format("15:04:05"), targetContainer, targetPort))
+	runArgs := BuildDockerRunArgs(proj.ID, targetColor, envs)
 	runCmd := exec.Command("docker", runArgs...)
 	runCmd.Dir = proj.Path
 	if err := runAndStreamOutput(runCmd, logWriter); err != nil {
@@ -175,7 +182,22 @@ func (d *Deployer) run(deployID string, proj *store.Project, source string) {
 		return
 	}
 
-	logWriter(fmt.Sprintf("[%s] Deployment finished successfully! Application running on port %d", time.Now().Format("15:04:05"), hostPort))
+	// 3f. Sync Caddy & Switch Traffic
+	logWriter(fmt.Sprintf("[%s] Syncing Caddy configuration to switch traffic...", time.Now().Format("15:04:05")))
+	if err := d.SyncCaddyConfig(); err != nil {
+		logWriter(fmt.Sprintf("[%s] WARNING: Failed to sync with Caddy: %v", time.Now().Format("15:04:05"), err))
+	} else {
+		logWriter(fmt.Sprintf("[%s] Traffic switched successfully to %s environment.", time.Now().Format("15:04:05"), targetColor))
+	}
+
+	// 3g. Cleanup old container (zero-downtime achieved)
+	if currentColor != "" {
+		oldContainer := ContainerName(proj.ID, currentColor)
+		logWriter(fmt.Sprintf("[%s] Stopping old container (%s)...", time.Now().Format("15:04:05"), oldContainer))
+		exec.Command("docker", "rm", "-f", oldContainer).Run()
+	}
+
+	logWriter(fmt.Sprintf("[%s] Deployment finished successfully! Application running on port %d (%s)", time.Now().Format("15:04:05"), targetPort, targetColor))
 	_ = d.store.UpdateStatus(deployID, store.StatusSuccess)
 }
 

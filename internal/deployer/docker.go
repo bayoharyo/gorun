@@ -52,22 +52,25 @@ func ImageName(projectID int64) string {
 }
 
 // ContainerName returns the standard Docker container name for a project.
-func ContainerName(projectID int64) string {
-	return fmt.Sprintf("gorun-app-%d", projectID)
+func ContainerName(projectID int64, color string) string {
+	return fmt.Sprintf("gorun-app-%d-%s", projectID, color)
 }
 
-// HostPort returns the deterministic host port for a project.
-func HostPort(projectID int64) int {
-	return int(8000 + projectID)
+// HostPort returns the deterministic host port for a project depending on color.
+func HostPort(projectID int64, color string) int {
+	if color == "green" {
+		return int(9000 + projectID)
+	}
+	return int(8000 + projectID) // blue
 }
 
 // BuildDockerRunArgs constructs the arguments for `docker run`.
-func BuildDockerRunArgs(projectID int64, envs []*store.ProjectEnv) []string {
+func BuildDockerRunArgs(projectID int64, color string, envs []*store.ProjectEnv) []string {
 	args := []string{
 		"run",
 		"-d",
-		"--name", ContainerName(projectID),
-		"-p", fmt.Sprintf("%d:8080", HostPort(projectID)),
+		"--name", ContainerName(projectID, color),
+		"-p", fmt.Sprintf("%d:8080", HostPort(projectID, color)),
 	}
 
 	for _, env := range envs {
@@ -78,9 +81,28 @@ func BuildDockerRunArgs(projectID int64, envs []*store.ProjectEnv) []string {
 	return args
 }
 
+// GetActiveColor checks which container (blue or green) is currently running.
+func GetActiveColor(projectID int64) string {
+	blueName := ContainerName(projectID, "blue")
+	cmd := exec.Command("docker", "ps", "-q", "-f", fmt.Sprintf("name=%s", blueName))
+	if out, _ := cmd.Output(); len(out) > 0 {
+		return "blue"
+	}
+	greenName := ContainerName(projectID, "green")
+	cmd = exec.Command("docker", "ps", "-q", "-f", fmt.Sprintf("name=%s", greenName))
+	if out, _ := cmd.Output(); len(out) > 0 {
+		return "green"
+	}
+	return ""
+}
+
 // StreamContainerLogs streams runtime logs of a project's Docker container via Server-Sent Events.
 func StreamContainerLogs(ctx context.Context, projectID int64, w io.Writer, flusher http.Flusher) error {
-	container := ContainerName(projectID)
+	color := GetActiveColor(projectID)
+	if color == "" {
+		color = "blue" // default fallback if neither running
+	}
+	container := ContainerName(projectID, color)
 	cmd := exec.CommandContext(ctx, "docker", "logs", "-f", "--tail", "50", container)
 
 	stdout, err := cmd.StdoutPipe()
