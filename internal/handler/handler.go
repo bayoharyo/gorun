@@ -100,9 +100,10 @@ func (h *Handler) RegisterRoutes(mux *http.ServeMux) {
 	mux.HandleFunc("GET /", h.basicAuth(h.handleDashboard))
 	mux.HandleFunc("GET /app/{name}", h.basicAuth(h.handleProject))
 
-	// HTMX Endpoints
+	// HTMX & SSE Endpoints
 	mux.HandleFunc("POST /app/{name}/deploy", h.basicAuth(h.handleTriggerDeploy))
 	mux.HandleFunc("GET /app/{name}/status", h.basicAuth(h.handleGetStatus))
+	mux.HandleFunc("GET /app/{name}/logs/stream", h.basicAuth(h.handleStreamLogs))
 
 	// Environment Variables & Custom Domains Endpoints
 	mux.HandleFunc("POST /app/{name}/env", h.basicAuth(h.handleAddEnv))
@@ -695,3 +696,33 @@ func (h *Handler) setToast(w http.ResponseWriter, msg, toastType string) {
 		w.Header().Set("HX-Trigger", string(bytes))
 	}
 }
+
+func (h *Handler) handleStreamLogs(w http.ResponseWriter, r *http.Request) {
+	name := r.PathValue("name")
+	proj, ok := h.lookupProject(w, name)
+	if !ok {
+		return
+	}
+
+	flusher, ok := w.(http.Flusher)
+	if !ok {
+		http.Error(w, "Streaming unsupported", http.StatusInternalServerError)
+		return
+	}
+
+	w.Header().Set("Content-Type", "text/event-stream")
+	w.Header().Set("Cache-Control", "no-cache")
+	w.Header().Set("Connection", "keep-alive")
+	w.Header().Set("X-Accel-Buffering", "no")
+
+	// Send initial connected indicator
+	fmt.Fprintf(w, "data: [Gorun] Connected to runtime log stream for %s\n\n", proj.Name)
+	flusher.Flush()
+
+	err := deployer.StreamContainerLogs(r.Context(), proj.ID, w, flusher)
+	if err != nil && err != r.Context().Err() {
+		fmt.Fprintf(w, "data: [Gorun] Log stream closed: %v\n\n", err)
+		flusher.Flush()
+	}
+}
+

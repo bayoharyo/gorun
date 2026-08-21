@@ -87,6 +87,28 @@
                     </div>
                 </div>
 
+                <div class="card status-card mt-4">
+                    <div class="status-header">
+                        <div>
+                            <span class="status-label">Runtime Observability:</span>
+                            <span class="badge status-idle" id="runtime-status-badge">Connecting...</span>
+                        </div>
+                        <div class="text-muted text-sm">
+                            Live Container Logs
+                        </div>
+                    </div>
+
+                    <div class="terminal-container">
+                        <div class="terminal-bar">
+                            <span class="dot dot-red"></span>
+                            <span class="dot dot-yellow"></span>
+                            <span class="dot dot-green"></span>
+                            <span class="terminal-title">Container Runtime Console (docker logs -f --tail 50)</span>
+                        </div>
+                        <pre class="terminal-body" id="runtime-log-console" style="max-height: 280px; overflow-y: auto;"><code>Waiting for container logs...</code></pre>
+                    </div>
+                </div>
+
                 {{template "env_fragment.html" .}}
                 {{template "domain_fragment.html" .}}
             </section>
@@ -140,11 +162,46 @@
             }, 3000);
         });
 
-        // Auto scroll terminal log to bottom on reload
+        // Auto scroll build log to bottom on reload
         const consoleEl = document.getElementById('log-console');
         if (consoleEl) {
             consoleEl.scrollTop = consoleEl.scrollHeight;
         }
+
+        // SSE for Runtime Logs
+        (function() {
+            const runtimeConsole = document.getElementById('runtime-log-console');
+            const statusBadge = document.getElementById('runtime-status-badge');
+            if (!runtimeConsole) return;
+
+            let isFirst = true;
+            const evtSource = new EventSource("/app/{{.Project.Name}}/logs/stream");
+
+            evtSource.onopen = function() {
+                if (statusBadge) {
+                    statusBadge.textContent = "Live";
+                    statusBadge.className = "badge status-success";
+                }
+            };
+
+            evtSource.onmessage = function(e) {
+                if (isFirst) {
+                    runtimeConsole.innerHTML = "";
+                    isFirst = false;
+                }
+                const line = document.createElement("div");
+                line.textContent = e.data;
+                runtimeConsole.appendChild(line);
+                runtimeConsole.scrollTop = runtimeConsole.scrollHeight;
+            };
+
+            evtSource.onerror = function() {
+                if (statusBadge) {
+                    statusBadge.textContent = "Reconnecting / Offline";
+                    statusBadge.className = "badge status-idle";
+                }
+            };
+        })();
     </script>
 </body>
 </html>

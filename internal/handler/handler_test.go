@@ -408,3 +408,39 @@ func TestEnvAndDomainRoutes(t *testing.T) {
 		t.Fatalf("expected 0 domains after deletion, got %d", len(domainsAfterDel))
 	}
 }
+
+func TestStreamLogsRoute(t *testing.T) {
+	_, mux, _, _ := setupTestEnvironment(t)
+
+	// 1. Without auth -> 401
+	req := httptest.NewRequest("GET", "/app/demo-app/logs/stream", nil)
+	rr := httptest.NewRecorder()
+	mux.ServeHTTP(rr, req)
+	if rr.Code != http.StatusUnauthorized {
+		t.Fatalf("expected status 401 on stream without auth, got %d", rr.Code)
+	}
+
+	// 2. Unknown app -> 404
+	req = newAuthRequest("GET", "/app/unknown-app/logs/stream", nil)
+	rr = httptest.NewRecorder()
+	mux.ServeHTTP(rr, req)
+	if rr.Code != http.StatusNotFound {
+		t.Fatalf("expected status 404 on stream for unknown app, got %d", rr.Code)
+	}
+
+	// 3. Valid app -> 200 with text/event-stream
+	req = newAuthRequest("GET", "/app/demo-app/logs/stream", nil)
+	rr = httptest.NewRecorder()
+	mux.ServeHTTP(rr, req)
+
+	if rr.Code != http.StatusOK {
+		t.Fatalf("expected status 200 on stream, got %d", rr.Code)
+	}
+	if ct := rr.Header().Get("Content-Type"); ct != "text/event-stream" {
+		t.Fatalf("expected Content-Type text/event-stream, got %s", ct)
+	}
+	if !strings.Contains(rr.Body.String(), "Connected to runtime log stream for demo-app") {
+		t.Fatalf("expected initial stream connection message, got %s", rr.Body.String())
+	}
+}
+

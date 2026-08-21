@@ -1,8 +1,13 @@
 package deployer
 
 import (
+	"bufio"
+	"context"
 	"fmt"
+	"io"
+	"net/http"
 	"os"
+	"os/exec"
 	"path/filepath"
 
 	"gorun/internal/store"
@@ -71,4 +76,52 @@ func BuildDockerRunArgs(projectID int64, envs []*store.ProjectEnv) []string {
 
 	args = append(args, ImageName(projectID))
 	return args
+}
+
+// StreamContainerLogs streams runtime logs of a project's Docker container via Server-Sent Events.
+func StreamContainerLogs(ctx context.Context, projectID int64, w io.Writer, flusher http.Flusher) error {
+	container := ContainerName(projectID)
+	cmd := exec.CommandContext(ctx, "docker", "logs", "-f", "--tail", "50", container)
+
+	stdout, err := cmd.StdoutPipe()
+	if err != nil {
+		return fmt.Errorf("failed to get stdout pipe: %w", err)
+	}
+	stderr, err := cmd.StderrPipe()
+	if err != nil {
+		return fmt.Errorf("failed to get stderr pipe: %w", err)
+	}
+
+	if err := cmd.Start(); err != nil {
+		return fmt.Errorf("failed to start docker logs: %w", err)
+	}
+
+	go func() {
+		<-ctx.Done()
+		if cmd.Process != nil {
+			_ = cmd.Process.Kill()
+		}
+	}()
+
+	reader := io.MultiReader(stdout, stderr)
+	scanner := bufio.NewScanner(reader)
+
+	for scanner.Scan() {
+		select {
+		case <-ctx.Done():
+			return ctx.Err()
+		default:
+			line := scanner.Text()
+			fmt.Fprintf(w, "data: %s\n\n", line)
+			if flusher != nil {
+				flusher.Flush()
+			}
+		}
+	}
+
+	if err := scanner.Err(); err != nil {
+		return err
+	}
+
+	return cmd.Wait()
 }
